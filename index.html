@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
+</head>
+<body>
+    <div class="wrapper">
+        <!-- Player selection container-->
+        <div class="players-name-container">
+            <h1>Welcome to Raja, Mantri, Chor, Sipahi Game</h1>
+            <div class="players-name">
+                <form class="player-name">
+                    <label for="">PLAYER 1</label>
+                    <input type="text" placeholder="Player1 name..." id="player1" data-player1>
+                </form>
+                <form class="player-name">
+                    <label for="">PLAYER 2</label>
+                    <input type="text" placeholder="Player2 name..." id="player2" data-player2>
+                </form>
+                <form class="player-name">
+                    <label for="">PLAYER 3</label>
+                    <input type="text" placeholder="Player3 name..." id="player3" data-player3>
+                </form>
+                <form class="player-name">
+                    <label for="">PLAYER 4</label>
+                    <input type="text" placeholder="Player4 name..." id="player4" data-player4>
+                </form>
+            </div>
+            <button class="start-btn" data-startbtn>Start the game!</button>
+        </div>
+
+        <div class="game-container hide">
+            <!-- 4 cards -->
+            <div class="player-cards">
+                <div class="player-card">
+                    <div class="player-card__face player-card__face--front">
+                        <!-- Front side content goes here -->
+                      </div>
+                      <div class="player-card__face player-card__face--back">
+                        <img src="./images/King.jpg" alt="">
+                      </div>
+                </div>
+            </div>
+            <div class="points-table hide">
+                <!-- Points table will be dynamically updated here -->
+            </div>
+        </div>
+    </div>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+    <script src="index.js"></script>
+</body>
+</html>
