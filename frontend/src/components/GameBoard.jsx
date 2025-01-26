@@ -34,7 +34,8 @@ const GameBoard = ({ players, setPlayers, onRoundComplete, updateRoundsHistory }
   const [currentRound, setCurrentRound] = useState(1);
   const [roundCompleted, setRoundCompleted] = useState(false);
   const [roundsHistory, setRoundsHistory] = useState([]);
-  const { currentGame, saveRound, updateGameStatus } = useGame();
+  const { saveGameData } = useGame();
+  const [sessionId] = useState(`game_${Date.now()}`);
 
   useEffect(() => {
     if (playerNames.length === 4) assignRoles();
@@ -119,41 +120,39 @@ const GameBoard = ({ players, setPlayers, onRoundComplete, updateRoundsHistory }
     }, 1000);
   };
 
-  const updatePoints = async () => {
-    const updatedPlayers = players.map((player) => {
-      const role = roles.find((r) => r.name === player.role);
-      player.points = role ? role.points : 0;
-      player.roundsHistory.push({ round: currentRound, points: role.points });
-      return player;
-    });
+  const updatePoints = () => {
+    setPlayers(
+      players.map((player) => {
+        const role = roles.find((r) => r.name === player.role);
+        player.points = role ? role.points : 0;
+        player.roundsHistory.push({ round: currentRound, points: role.points });
+        return player;
+      })
+    );
 
-    setPlayers(updatedPlayers);
-
-    // Create round data for Firebase and local state
+    // After updating points locally, save to Firebase
     const roundData = {};
-    const firebaseRoundData = {};
-    updatedPlayers.forEach((player) => {
-      // For local state (PointsTable)
+    players.forEach((player) => {
       roundData[player.name] = player.points;
-
-      // For Firebase
-      firebaseRoundData[player.name] = {
-        points: player.points,
-        role: player.role,
-        roundPoints: player.roundsHistory[player.roundsHistory.length - 1].points
-      };
     });
 
-    try {
-      if (currentGame) {
-        await saveRound(currentGame.id, currentRound, firebaseRoundData);
+    saveGameData({
+      sessionId,
+      roundNumber: currentRound,
+      roundData: roundData,
+      players: players.map(player => ({
+        name: player.name,
+        role: player.role,
+        points: player.points,
+        roundsHistory: player.roundsHistory
+      })),
+      gameSettings: {
+        totalRounds: rounds,
+        playerNames: playerNames
       }
-    } catch (error) {
-      console.error('Error saving round data:', error);
-      alert('Failed to save round data');
-    }
-
-    return roundData; // Return the simplified version for local state
+    }).catch(error => {
+      console.error("Error saving round data:", error);
+    });
   };
 
   const handlePlayerSelection = (index) => {
@@ -183,52 +182,63 @@ const GameBoard = ({ players, setPlayers, onRoundComplete, updateRoundsHistory }
     setRoundCompleted(true);
   };
 
-  const handleNextRound = async () => {
+  const handleNextRound = () => {
     if (currentRound <= rounds) {
       // Create round data
       const roundData = {};
-      const firebaseRoundData = {};
       players.forEach((player) => {
-        // For local state (PointsTable)
         roundData[player.name] = player.points;
+      });
+      
+      // Update local state first
+      const newRoundsHistory = [...roundsHistory, roundData];
+      setRoundsHistory(newRoundsHistory);
+      updateRoundsHistory(newRoundsHistory);
+      onRoundComplete(roundData);
 
-        // For Firebase
-        firebaseRoundData[player.name] = {
-          points: player.points,
+      // Save round completion to Firebase
+      saveGameData({
+        sessionId,
+        roundNumber: currentRound,
+        roundData: roundData,
+        players: players.map(player => ({
+          name: player.name,
           role: player.role,
-          totalPoints: player.points
-        };
+          points: player.points,
+          roundsHistory: player.roundsHistory
+        })),
+        gameSettings: {
+          totalRounds: rounds,
+          playerNames: playerNames
+        }
+      }).catch(error => {
+        console.error("Error saving round completion:", error);
       });
 
-      try {
-        // Update local roundsHistory
-        const newRoundsHistory = [...roundsHistory, roundData];
-        setRoundsHistory(newRoundsHistory);
-    
-        // Send updated roundsHistory to parent (GamePage)
-        updateRoundsHistory(newRoundsHistory);
-        onRoundComplete(roundData);
-    
-        // Save detailed data to Firebase
-        if (currentGame) {
-          await saveRound(currentGame.id, currentRound, firebaseRoundData);
-        }
-
-        // Prepare for the next round
-        setCurrentRound((prev) => prev + 1);
-        assignRoles();
-        setGameStarted(false);
-        setRoundCompleted(false);
-
-        // If this was the last round, update game status
-        if (currentRound === rounds && currentGame) {
-          await updateGameStatus(currentGame.id, 'completed');
-        }
-      } catch (error) {
-        console.error('Error handling next round:', error);
-        alert('Error saving round data. Please try again.');
-      }
+      // Prepare for the next round
+      setCurrentRound((prev) => prev + 1);
+      assignRoles();
+      setGameStarted(false);
+      setRoundCompleted(false);
     } else {
+      // Save final game state to Firebase
+      saveGameData({
+        sessionId,
+        gameCompleted: true,
+        totalRounds: rounds,
+        finalScores: players.map(player => ({
+          name: player.name,
+          totalPoints: player.points
+        })),
+        players: players,
+        gameSettings: {
+          totalRounds: rounds,
+          playerNames: playerNames
+        }
+      }).catch(error => {
+        console.error("Error saving final game state:", error);
+      });
+
       alert("Game Over! All rounds completed.");
       setGameStarted(false);
     }

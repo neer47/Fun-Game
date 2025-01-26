@@ -6,16 +6,16 @@ import { GameProvider } from './context/GameContext';
 
 const App = () => {
   return (
-    <GameProvider>
-      <Router>
+    <Router>
+      <GameProvider>
         <div className="min-h-screen bg-gray-100">
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/game" element={<GamePage />} />
           </Routes>
         </div>
-      </Router>
-    </GameProvider>
+      </GameProvider>
+    </Router>
   );
 };
 
