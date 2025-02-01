@@ -1,263 +1,423 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import PlayerCard from "./PlayerCard";
-import { useGame } from '../context/GameContext';
+import { useGame } from "../context/GameContext";
+import {
+  ref,
+  onValue,
+  update,
+  set,
+  serverTimestamp,
+  get,
+} from "firebase/database";
+import { db } from "../config/firebase";
 
 const roles = [
   { name: "Raja", points: 1000, image: "/images/king.jpg" },
   { name: "Mantri", points: 500, image: "/images/minister.avif" },
-  { name: "Sipahi", points: 300, image: "/images/soilder.avif" },
+  { name: "Sipahi", points: 300, image: "/images/soldier.avif" },
   { name: "Chor", points: 0, image: "/images/thief.jpg" },
 ];
 
-const GameBoard = ({ players, setPlayers, onRoundComplete, updateRoundsHistory }) => {
+const GameBoard = ({
+  players,
+  setPlayers,
+  onRoundComplete,
+  updateRoundsHistory,
+  sessionId: propSessionId,
+}) => {
   const timerIdRef = useRef(null);
   const location = useLocation();
-  const { playerNames, rounds } = location.state || {
-    playerNames: [],
-    rounds: 1,
-  };
+  const {
+    playerNames = [],
+    gameMode = "single",
+    rounds = 1,
+  } = location.state || {};
+  const { gameSessionId, playerName } = useGame();
 
-  // console.log("playerNames", playerNames);
-  // console.log("rounds", rounds);
-
+  // State variables
   const [flippedIndexes, setFlippedIndexes] = useState([]);
   const [gameStarted, setGameStarted] = useState(false);
   const [timeLeft, setTimeLeft] = useState(30);
-  const [indexes, setIndexes] = useState({
-    mantri: null,
-    chor: null,
-    sipahi: null,
-    raja: null,
-  });
-  const [mantriSelected, setMantriSelected] = useState(false);
   const [currentRound, setCurrentRound] = useState(1);
   const [roundCompleted, setRoundCompleted] = useState(false);
   const [roundsHistory, setRoundsHistory] = useState([]);
-  const { saveGameData } = useGame();
-  const [sessionId] = useState(`game_${Date.now()}`);
+  const [indexes, setIndexes] = useState({
+    raja: null,
+    mantri: null,
+    chor: null,
+    sipahi: null,
+  });
+  const [mantriSelected, setMantriSelected] = useState(false);
+  const sessionId = propSessionId || gameSessionId || `game_${Date.now()}`;
+  const isHost =
+    gameMode === "multi"
+      ? players.find((p) => p.name === playerName)?.isHost
+      : true;
+  const isCurrentMantri = players.some(
+    (p) => p.name === playerName && p.role === "Mantri"
+  );
 
+  // Firebase synchronization with improved roundsHistory handling
+  const isUpdatingRef = useRef(false);
+
+  // Modified Firebase synchronization
   useEffect(() => {
-    if (playerNames.length === 4) assignRoles();
-  }, [playerNames, currentRound]);
-
-  // console.log("assignRoles called");
-
-  const assignRoles = () => {
-    let shuffledPlayers = [...players].length
-      ? [...players]
-      : playerNames.map((name) => ({ name, points: 0, lastRole: null }));
-  
-    let shuffledRoles = [...roles];
-  
-    // Fisher-Yates Shuffle for players
-    for (let i = shuffledPlayers.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffledPlayers[i], shuffledPlayers[j]] = [shuffledPlayers[j], shuffledPlayers[i]];
+    if (gameMode === "multi" && sessionId) {
+      const gameRef = ref(db, `games/${sessionId}`);
+      const unsubscribe = onValue(gameRef, (snapshot) => {
+        if (snapshot.exists()) {
+          const gameData = snapshot.val();
+          
+          // Only update if we're not currently updating Firebase
+          if (!isUpdatingRef.current) {
+            setPlayers([...(gameData.players || [])]);
+            
+            // Only update roundsHistory if it exists and is non-empty
+            if (gameData.roundsHistory && gameData.roundsHistory.length > 0) {
+              setRoundsHistory(gameData.roundsHistory);
+              updateRoundsHistory(gameData.roundsHistory);
+            }
+            
+            setIndexes((prev) => gameData.indexes || prev);
+            setFlippedIndexes((prev) => gameData.flippedIndexes || prev);
+            setTimeLeft(gameData.timeLeft ?? 30);
+            setGameStarted(!!gameData.gameStarted);
+            setCurrentRound((prev) => gameData.currentRound ?? prev);
+            setRoundCompleted(!!gameData.roundCompleted);
+            setMantriSelected(!!gameData.mantriSelected);
+          }
+        }
+      });
+      return () => unsubscribe();
     }
-  
-    // Fisher-Yates Shuffle for roles
-    for (let i = shuffledRoles.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffledRoles[i], shuffledRoles[j]] = [shuffledRoles[j], shuffledRoles[i]];
+  }, [gameMode, sessionId]);
+  // Modified assignRoles to handle role reassignment
+  const assignRoles = async () => {
+    if (gameMode === "multi") {
+      const gameRef = ref(db, `games/${sessionId}`);
+      const snapshot = await get(gameRef);
+      const gameData = snapshot.val();
+
+      // Only proceed if we're the host
+      if (!isHost) return null;
     }
-  
-    // Assign shuffled roles to shuffled players
+
+    let shuffledPlayers = [];
+    if (gameMode === "single") {
+      shuffledPlayers = playerNames.map((name) => ({
+        name,
+        points: 0,
+        isHost: false,
+      }));
+    } else {
+      // In multiplayer, preserve points and host status but reset roles
+      shuffledPlayers = players.map((player) => ({
+        ...player,
+        role: null, // Clear existing role
+        image: null, // Clear existing image
+      }));
+    }
+
+    // Shuffle roles and assign to players
+    const shuffledRoles = [...roles].sort(() => Math.random() - 0.5);
+    shuffledPlayers = shuffledPlayers.sort(() => Math.random() - 0.5);
+
     const assignedPlayers = shuffledPlayers.map((player, index) => ({
       ...player,
       role: shuffledRoles[index].name,
       image: shuffledRoles[index].image,
-      lastRole: player.role, // Track previous role
-      roundsHistory: player.roundsHistory || [],
     }));
-  
-    setPlayers(assignedPlayers);
-  
-    setIndexes({
+
+    const newIndexes = {
       raja: assignedPlayers.findIndex((p) => p.role === "Raja"),
       mantri: assignedPlayers.findIndex((p) => p.role === "Mantri"),
       chor: assignedPlayers.findIndex((p) => p.role === "Chor"),
       sipahi: assignedPlayers.findIndex((p) => p.role === "Sipahi"),
-    });
-  
-    setFlippedIndexes([]);
+    };
+
+    setPlayers(assignedPlayers);
+    setIndexes(newIndexes);
+
+    if (gameMode === "multi") {
+      await updateGameInFirebase({
+        players: assignedPlayers,
+        indexes: newIndexes,
+      });
+    }
+
+    return { players: assignedPlayers, indexes: newIndexes };
   };
-  
-  
-  const handleStartGame = () => {
-    if (currentRound > rounds) return alert("Game Over! No more rounds left.");
+  // Start game flow
+  const handleStartGame = async () => {
+    if (gameMode === "multi" && !isHost) return;
 
-    setGameStarted(true);
-    setRoundCompleted(false);
-    setMantriSelected(false);
-    setFlippedIndexes([indexes.raja]);
+    // Always assign new roles when starting a new round
+    const result = await assignRoles();
+    if (!result) return;
 
-    // console.log("handleStartGame called");
+    if (gameMode === "multi") {
+      await updateGameInFirebase({
+        gameStarted: true,
+        flippedIndexes: [result.indexes.raja],
+        currentRound,
+        mantriSelected: false,
+        roundCompleted: false,
+        indexes: result.indexes,
+        players: result.players,
+        timeLeft: 30,
+      });
+    } else {
+      setGameStarted(true);
+      setFlippedIndexes([result.indexes.raja]);
+      setIndexes(result.indexes);
+      setTimeLeft(30);
+    }
 
-    setTimeout(() => {
-      setFlippedIndexes([]);
-      revealMantri();
+    // After 2 seconds, reveal Mantri and start timer
+    setTimeout(async () => {
+      const mantriIndex = result.indexes.mantri;
+      setFlippedIndexes([mantriIndex]);
+      if (gameMode === "multi") {
+        await updateGameInFirebase({
+          flippedIndexes: [mantriIndex],
+        });
+      }
+      startTimer();
     }, 2000);
   };
 
-  const revealMantri = () => {
-    setFlippedIndexes([indexes.mantri]);
-    setTimeLeft(30);
+  // Timer management
+  const startTimer = () => {
+    // Clear any existing timer
+    if (timerIdRef.current) {
+      clearInterval(timerIdRef.current);
+    }
 
-    // console.log("revealMantri called");
+    // For multiplayer, update time directly in Firebase
+    if (gameMode === "multi" && sessionId) {
+      timerIdRef.current = setInterval(async () => {
+        const gameRef = ref(db, `games/${sessionId}`);
+        const snapshot = await get(gameRef);
+        const currentTime = snapshot.val()?.timeLeft ?? 0;
 
-    timerIdRef.current = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
+        if (currentTime <= 0) {
           clearInterval(timerIdRef.current);
-          setFlippedIndexes([]);
-          if (!mantriSelected) handlePlayerSelection();
-          setRoundCompleted(true);
-          return 0;
+          handleTimeOut();
+          return;
         }
-        return prev - 1;
+
+        await update(gameRef, {
+          timeLeft: currentTime - 1,
+          lastTimerUpdate: serverTimestamp(),
+        });
+      }, 1000);
+    } else {
+      // Single player timer remains the same
+      timerIdRef.current = setInterval(() => {
+        setTimeLeft((prev) => {
+          const newTime = prev - 1;
+          if (newTime <= 0) {
+            clearInterval(timerIdRef.current);
+            handleTimeOut();
+          }
+          return newTime;
+        });
+      }, 1000);
+    }
+  };
+
+  // Handle timer expiration
+  const handleTimeOut = async () => {
+    await updatePoints(indexes.mantri);
+    if (gameMode === "multi") {
+      await updateGameInFirebase({
+        roundCompleted: true,
+        gameStarted: false,
+        flippedIndexes: [],
       });
-    }, 1000);
+    } else {
+      setFlippedIndexes([]);
+    }
   };
 
-  const updatePoints = () => {
-    setPlayers(
-      players.map((player) => {
-        const role = roles.find((r) => r.name === player.role);
-        player.points = role ? role.points : 0;
-        player.roundsHistory.push({ round: currentRound, points: role.points });
-        return player;
-      })
-    );
+  // Points calculation with global roundsHistory update
+  const updatePoints = async (selectedIndex) => {
+    const isCorrect = selectedIndex === indexes.chor;
+    const roundEntry = {};
 
-    // After updating points locally, save to Firebase
-    const roundData = {};
-    players.forEach((player) => {
-      roundData[player.name] = player.points;
-    });
-
-    saveGameData({
-      sessionId,
-      roundNumber: currentRound,
-      roundData: roundData,
-      players: players.map(player => ({
-        name: player.name,
-        role: player.role,
-        points: player.points,
-        roundsHistory: player.roundsHistory
-      })),
-      gameSettings: {
-        totalRounds: rounds,
-        playerNames: playerNames
+    const updatedPlayers = players.map((player) => {
+      let points = player.points || 0;
+      let roundPoints = 0;
+      
+      switch (player.role) {
+        case "Raja":
+          roundPoints = 1000;
+          break;
+        case "Sipahi":
+          roundPoints = 300;
+          break;
+        case "Mantri":
+          roundPoints = isCorrect ? 500 : 0;
+          break;
+        case "Chor":
+          roundPoints = isCorrect ? 0 : 500;
+          break;
       }
-    }).catch(error => {
-      console.error("Error saving round data:", error);
+      
+      points += roundPoints;
+      roundEntry[player.name] = roundPoints;
+      return { ...player, points };
     });
+
+    try {
+      isUpdatingRef.current = true;
+
+      // Get current state from Firebase
+      let updatedRoundsHistory = [];
+      if (gameMode === "multi") {
+        const gameRef = ref(db, `games/${sessionId}`);
+        const snapshot = await get(gameRef);
+        const currentData = snapshot.val() || {};
+        updatedRoundsHistory = [...(currentData.roundsHistory || []), roundEntry];
+
+        // Update Firebase atomically
+        await update(gameRef, {
+          players: updatedPlayers,
+          roundsHistory: updatedRoundsHistory,
+          roundCompleted: true,
+          gameStarted: false,
+          mantriSelected: true,
+          lastUpdated: serverTimestamp(),
+        });
+      } else {
+        updatedRoundsHistory = [...roundsHistory, roundEntry];
+      }
+
+      // Update local state
+      setRoundsHistory(updatedRoundsHistory);
+      updateRoundsHistory(updatedRoundsHistory);
+      setPlayers(updatedPlayers);
+      setRoundCompleted(true);
+    } finally {
+      isUpdatingRef.current = false;
+    }
   };
+  // Player selection handler
+  // Player selection handler with improved synchronization
+  const handlePlayerSelection = async (index) => {
+    if (
+      !isCurrentMantri ||
+      mantriSelected ||
+      !gameStarted ||
+      timeLeft === 0 ||
+      index === indexes.mantri
+    )
+      return;
 
-  const handlePlayerSelection = (index) => {
-    if (!gameStarted || timeLeft === 0 || index == indexes.mantri) return;
-
-    setFlippedIndexes([index]);
+    // Update selection state immediately
     setMantriSelected(true);
+    setFlippedIndexes([index]);
     clearInterval(timerIdRef.current);
     setTimeLeft(0);
 
-    // console.log("handlePlayerSelection called");
+    if (gameMode === "multi") {
+      await updateGameInFirebase({
+        mantriSelected: true,
+        flippedIndexes: [index],
+        timeLeft: 0,
+      });
+    }
 
+    // Show result and update points
     setTimeout(() => {
-      if (index == indexes.chor) {
-        alert("Correct! The Chor has been identified.");
-        updatePoints(indexes.mantri, indexes.chor, indexes.raja);
-      } else {
-        alert("Wrong choice! Mantri's points are swapped with Chor.");
-        updatePoints(indexes.chor, indexes.mantri, indexes.raja);
+      const isCorrect = index === indexes.chor;
+      alert(
+        isCorrect
+          ? "Correct! The Chor has been identified."
+          : "Wrong choice! Mantri's points are swapped with Chor."
+      );
+    }, 100);
+
+    // Update points and complete round
+    await updatePoints(index);
+
+    // Flip cards back after delay
+    setTimeout(() => {
+      setFlippedIndexes([]);
+      if (gameMode === "multi") {
+        updateGameInFirebase({ flippedIndexes: [] });
       }
-    }, 100); // delay the alert by 100ms
-
-    setTimeout(() => {
-      setFlippedIndexes([]); // flip the card back to its original state
-    }, 1500); // delay the flip back by 1500ms
-
-    setRoundCompleted(true);
+    }, 1500);
   };
 
-  const handleNextRound = () => {
-    if (currentRound <= rounds) {
-      // Create round data
-      const roundData = {};
-      players.forEach((player) => {
-        roundData[player.name] = player.points;
-      });
-      
-      // Update local state first
-      const newRoundsHistory = [...roundsHistory, roundData];
-      setRoundsHistory(newRoundsHistory);
-      updateRoundsHistory(newRoundsHistory);
-      onRoundComplete(roundData);
+  // Next round handler
+  const handleNextRound = async () => {
+    if (gameMode === "multi" && !isHost) return;
 
-      // Save round completion to Firebase
-      saveGameData({
-        sessionId,
-        roundNumber: currentRound,
-        roundData: roundData,
-        players: players.map(player => ({
-          name: player.name,
-          role: player.role,
-          points: player.points,
-          roundsHistory: player.roundsHistory
-        })),
-        gameSettings: {
-          totalRounds: rounds,
-          playerNames: playerNames
-        }
-      }).catch(error => {
-        console.error("Error saving round completion:", error);
-      });
+    try {
+      isUpdatingRef.current = true;
 
-      // Prepare for the next round
-      setCurrentRound((prev) => prev + 1);
-      assignRoles();
-      setGameStarted(false);
-      setRoundCompleted(false);
-    } else {
-      // Save final game state to Firebase
-      saveGameData({
-        sessionId,
-        gameCompleted: true,
-        totalRounds: rounds,
-        finalScores: players.map(player => ({
-          name: player.name,
-          totalPoints: player.points
-        })),
-        players: players,
-        gameSettings: {
-          totalRounds: rounds,
-          playerNames: playerNames
-        }
-      }).catch(error => {
-        console.error("Error saving final game state:", error);
-      });
+      // Preserve roundsHistory while updating other state
+      const updates = {
+        currentRound: currentRound + 1,
+        gameStarted: false,
+        roundCompleted: false,
+        mantriSelected: false,
+        flippedIndexes: [],
+        timeLeft: 30,
+        // Don't reset roundsHistory here
+      };
 
-      alert("Game Over! All rounds completed.");
-      setGameStarted(false);
+      if (gameMode === "multi") {
+        const gameRef = ref(db, `games/${sessionId}`);
+        await update(gameRef, {
+          ...updates,
+          lastUpdated: serverTimestamp(),
+        });
+      } else {
+        setCurrentRound(prev => prev + 1);
+        setGameStarted(false);
+        setRoundCompleted(false);
+        setFlippedIndexes([]);
+        setTimeLeft(30);
+      }
+
+      if (currentRound >= rounds) {
+        alert("Game Over!");
+        return;
+      }
+    } finally {
+      isUpdatingRef.current = false;
     }
   };
-  
-  // console.log("rendered GameBoard component");
+
+  const updateGameInFirebase = async (updates) => {
+    if (gameMode === "multi" && sessionId) {
+      const gameRef = ref(db, `games/${sessionId}`);
+      await update(gameRef, { ...updates, lastUpdated: serverTimestamp() });
+    }
+  };
 
   return (
     <div className="w-full max-w-lg mx-auto p-6 bg-gray-800 rounded-lg shadow-lg">
       <h2 className="text-center text-xl font-semibold text-yellow-400 mb-4">
-        {currentRound <= rounds ? `Round ${currentRound} / ${rounds}` : `${rounds} Rounds Completed`}
+        Round {currentRound} / {rounds}
       </h2>
 
-      <div className="text-center text-lg text-white mb-4">
-        Time Left: {timeLeft}s
-      </div>
+      {gameStarted && (
+        <div className="text-center text-lg text-white mb-4">
+          Time Left: {timeLeft}s
+          {isCurrentMantri && !mantriSelected && (
+            <div className="text-yellow-300 animate-pulse mt-2">
+              Mantri: Select the Chor!
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-6 place-items-center">
-        {players.map((player, index) => (
+        {players?.map((player, index) => (
           <PlayerCard
             key={index}
             name={player.name}
@@ -265,30 +425,33 @@ const GameBoard = ({ players, setPlayers, onRoundComplete, updateRoundsHistory }
             image={player.image}
             isFlipped={flippedIndexes.includes(index)}
             onClick={() => handlePlayerSelection(index)}
+            isClickable={isCurrentMantri && !mantriSelected && timeLeft > 0}
           />
         ))}
       </div>
 
       <div className="mt-6 flex space-x-4 justify-center">
-        {!gameStarted && !roundCompleted && (
-          <button
-            onClick={handleStartGame}
-            className={`${currentRound <= rounds ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'} text-white px-6 py-3 rounded-lg shadow-md transition`}
-          >
-            {currentRound <= rounds ? 'Start Game' : 'Game Over'}
-          </button>
-        )}
+        {!gameStarted &&
+          !roundCompleted &&
+          currentRound <= rounds &&
+          (isHost || gameMode === "single") && (
+            <button
+              onClick={handleStartGame}
+              className="bg-green-500 text-white px-6 py-3 rounded-lg hover:bg-green-600"
+            >
+              Start Game
+            </button>
+          )}
 
-        {roundCompleted && currentRound <= rounds && (
+        {roundCompleted && (isHost || gameMode === "single") && (
           <button
             onClick={handleNextRound}
-            className="bg-blue-500 text-white px-6 py-3 rounded-lg shadow-md hover:bg-blue-600 transition"
+            className="bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600"
           >
-            Next Round
+            {currentRound < rounds ? "Next Round" : "Finish Game"}
           </button>
         )}
       </div>
-
     </div>
   );
 };

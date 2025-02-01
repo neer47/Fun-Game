@@ -1,48 +1,69 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useEffect } from "react";
 import { useReactTable, getCoreRowModel, flexRender } from "@tanstack/react-table";
 
 const PointsTable = ({ players, roundsHistory }) => {
-  console.log("The roundHistory is: ",roundsHistory);
-  // Compute total scores dynamically
+  // Add debugging
+  useEffect(() => {
+    console.log("PointsTable received new roundsHistory:", roundsHistory);
+  }, [roundsHistory]);
+
+  // Compute total scores with null check
   const totalScores = useMemo(() => {
+    if (!roundsHistory || !Array.isArray(roundsHistory)) {
+      console.log("Invalid roundsHistory:", roundsHistory);
+      return {};
+    }
+
     return players.reduce((totals, player) => {
-      totals[player.name] = roundsHistory.reduce((sum, round) => sum + (round[player.name] || 0), 0);
+      totals[player.name] = roundsHistory.reduce((sum, round) => {
+        const points = round[player.name];
+        return sum + (typeof points === 'number' ? points : 0);
+      }, 0);
       return totals;
     }, {});
   }, [roundsHistory, players]);
 
-  // Define table columns (fixed order for players)
+  // Define table columns
   const columns = useMemo(
-    () => players.map(player => ({ header: player.name, accessorKey: player.name })),
+    () => players.map(player => ({
+      header: player.name,
+      accessorKey: player.name,
+      cell: info => info.getValue() ?? 0 // Handle null/undefined values
+    })),
     [players]
   );
 
-  // Prepare table data (each round's points + total scores)
+  // Prepare table data with validation
   const data = useMemo(() => {
+    if (!roundsHistory || !Array.isArray(roundsHistory)) {
+      return [players.reduce((obj, player) => {
+        obj[player.name] = 0;
+        return obj;
+      }, {})];
+    }
+
     const roundsData = roundsHistory.map(round =>
       players.reduce((obj, player) => {
-        obj[player.name] = round[player.name] !== undefined ? round[player.name] : 0;
+        obj[player.name] = round[player.name] ?? 0;
         return obj;
       }, {})
     );
 
     // Add the total row
     const totalRow = players.reduce((obj, player) => {
-      obj[player.name] = totalScores[player.name];
+      obj[player.name] = totalScores[player.name] ?? 0;
       return obj;
     }, {});
 
     return [...roundsData, totalRow];
   }, [roundsHistory, players, totalScores]);
 
-  // Initialize table
   const table = useReactTable({
     data,
     columns,
     getCoreRowModel: getCoreRowModel(),
   });
-  // console.log("roundsHistory in Points table: ",data);
-  
+
   return (
     <div className="bg-gray-800 text-white p-4 rounded-lg shadow-lg w-full">
       <h2 className="text-center text-lg font-bold text-yellow-400 mb-4">Points Table</h2>
@@ -60,7 +81,12 @@ const PointsTable = ({ players, roundsHistory }) => {
         </thead>
         <tbody>
           {table.getRowModel().rows.map((row, rowIndex) => (
-            <tr key={row.id} className={`border border-yellow-400 ${rowIndex === roundsHistory.length ? "bg-yellow-600 text-gray-900 font-bold" : ""}`}>
+            <tr 
+              key={row.id} 
+              className={`border border-yellow-400 ${
+                rowIndex === (roundsHistory?.length || 0) ? "bg-yellow-600 text-gray-900 font-bold" : ""
+              }`}
+            >
               {row.getVisibleCells().map(cell => (
                 <td key={cell.id} className="p-2 border border-yellow-400">
                   {flexRender(cell.column.columnDef.cell, cell.getContext())}

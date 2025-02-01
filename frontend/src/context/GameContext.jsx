@@ -1,19 +1,11 @@
-import React, { createContext, useContext, useState } from 'react';
-import { db } from '../config/firebase';
-import { 
-  collection, 
-  addDoc,
-  doc,
-  setDoc,
-  getDoc,
-  getDocs,
-  query,
-  orderBy,
-  onSnapshot,
-  serverTimestamp 
-} from 'firebase/firestore';
+import React, { createContext, useContext, useState } from "react";
+import { db as firebaseDb } from "../config/firebase";
+import { ref, set, push, onValue, update, get } from "firebase/database";
 
 const GameContext = createContext();
+const db = firebaseDb;
+
+export { GameContext };
 
 export function useGame() {
   return useContext(GameContext);
@@ -22,92 +14,110 @@ export function useGame() {
 export function GameProvider({ children }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [playerName, setPlayerName] = useState("");
+  const [roomLink, setRoomLink] = useState("");
+  const [isCreatingRoom, setIsCreatingRoom] = useState(false);
+  const [gameSessionId, setGameSessionId] = useState(null);
+  const [players, setPlayers] = useState([]);
 
-  // Save game data
-  const saveGameData = async (gameData) => {
+  const createRoom = async (rounds = 1) => {
+    const roomId = Math.random().toString(36).substr(2, 9);
     try {
       setLoading(true);
-      const gameRef = collection(db, 'games', gameData.sessionId, 'rounds');
-      
-      if (gameData.gameCompleted) {
-        await setDoc(doc(db, 'games', gameData.sessionId), {
-          totalRounds: gameData.totalRounds,
-          finalScores: gameData.finalScores,
-          completedAt: serverTimestamp(),
-          playerNames: gameData.players.map(p => p.name),
-          gameSettings: gameData.gameSettings,
-          status: 'completed'
-        });
-      } else {
-        // Update game status document
-        await setDoc(doc(db, 'games', gameData.sessionId), {
-          currentRound: gameData.roundNumber,
-          totalRounds: gameData.gameSettings.totalRounds,
-          playerNames: gameData.gameSettings.playerNames,
-          status: 'in-progress',
-          lastUpdated: serverTimestamp()
-        }, { merge: true });
-
-        // Save round data
-        await addDoc(gameRef, {
-          roundNumber: gameData.roundNumber,
-          roundData: gameData.roundData,
-          players: gameData.players,
-          timestamp: serverTimestamp()
-        });
+      const timestamp = new Date().toISOString();
+      if (!db) {
+        throw new Error("Database not initialized");
       }
+      const gameRef = ref(db, `/games/${roomId}`);
+      await set(gameRef, {
+        players: [
+          {
+            name: playerName,
+            isHost: true,
+            points: 0,
+          },
+        ],
+        status: "waiting",
+        currentRound: 1,
+        createdAt: timestamp,
+        totalRounds: rounds,
+        playerCount: 4,
+        gameStarted: false,
+        mantriSelected: false,
+        roundCompleted: false,
+        timeLeft: 30,
+      });
+
+      setIsCreatingRoom(true);
+      setGameSessionId(roomId);
+      setRoomLink(`${window.location.origin}/multiplayer?join=${roomId}`);
+      return roomId;
     } catch (error) {
-      console.error("Error saving game data:", error);
+      console.error("Error creating room:", error);
       setError(error.message);
+      return null;
     } finally {
       setLoading(false);
     }
   };
 
-  // Subscribe to game updates
-  const subscribeToGame = (sessionId, onUpdate) => {
-    if (!sessionId) {
-      console.error("subscribeToGame called with undefined sessionId");
-      return () => {}; // Return a no-op cleanup function
-    }
+  const joinRoom = async (roomId) => {
+    try {
+      setLoading(true);
+      const roomRef = ref(db, `games/${roomId}`);
+      const snapshot = await get(roomRef);
 
-    // Listen to game document changes
-    const gameDoc = doc(db, 'games', sessionId);
-    const gameUnsubscribe = onSnapshot(gameDoc, (doc) => {
-      if (doc.exists()) {
-        const gameData = doc.data();
-        onUpdate({ type: 'gameUpdate', data: gameData });
+      if (!snapshot.exists()) {
+        alert("Room not found!");
+        return null;
       }
-    });
 
-    // Listen to rounds collection changes
-    const roundsRef = collection(db, 'games', sessionId, 'rounds');
-    const q = query(roundsRef, orderBy('roundNumber'));
-    const roundsUnsubscribe = onSnapshot(q, (snapshot) => {
-      const rounds = [];
-      snapshot.forEach((doc) => {
-        rounds.push(doc.data());
+      const gameData = snapshot.val();
+
+      if (gameData.players && gameData.players.length >= 4) {
+        alert("Room is full!");
+        return null;
+      }
+
+      const newPlayer = {
+        name: playerName,
+        isHost: false,
+        points: 0,
+      };
+
+      const updatedPlayers = gameData.players
+        ? [...gameData.players, newPlayer]
+        : [newPlayer];
+      await update(roomRef, {
+        players: updatedPlayers,
       });
-      onUpdate({ type: 'roundsUpdate', data: rounds });
-    });
 
-    // Return cleanup function
-    return () => {
-      gameUnsubscribe();
-      roundsUnsubscribe();
-    };
+      setRoomLink(`${window.location.origin}/multiplayer?join=${roomId}`);
+      setGameSessionId(roomId);
+      return roomId;
+    } catch (error) {
+      console.error("Error joining room:", error);
+      setError(error.message);
+      return null;
+    } finally {
+      setLoading(false);
+    }
   };
 
   const value = {
-    saveGameData,
-    subscribeToGame,
     loading,
-    error
+    error,
+    playerName,
+    setPlayerName,
+    roomLink,
+    createRoom,
+    joinRoom,
+    isCreatingRoom,
+    gameSessionId,
+    setGameSessionId,
+    players,
+    setPlayers,
   };
 
-  return (
-    <GameContext.Provider value={value}>
-      {children}
-    </GameContext.Provider>
-  );
+  return <GameContext.Provider value={value}>{children}</GameContext.Provider>;
 }
