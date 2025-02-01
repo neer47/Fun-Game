@@ -66,7 +66,12 @@ export function GameProvider({ children }) {
 
   // Subscribe to game updates
   const subscribeToGame = (sessionId, onUpdate) => {
-    // Subscribe to game document updates
+    if (!sessionId) {
+      console.error("subscribeToGame called with undefined sessionId");
+      return () => {}; // Return a no-op cleanup function
+    }
+
+    // Listen to game document changes
     const gameDoc = doc(db, 'games', sessionId);
     const gameUnsubscribe = onSnapshot(gameDoc, (doc) => {
       if (doc.exists()) {
@@ -75,7 +80,7 @@ export function GameProvider({ children }) {
       }
     });
 
-    // Subscribe to rounds updates
+    // Listen to rounds collection changes
     const roundsRef = collection(db, 'games', sessionId, 'rounds');
     const q = query(roundsRef, orderBy('roundNumber'));
     const roundsUnsubscribe = onSnapshot(q, (snapshot) => {
@@ -86,7 +91,7 @@ export function GameProvider({ children }) {
       onUpdate({ type: 'roundsUpdate', data: rounds });
     });
 
-    // Return unsubscribe function
+    // Return cleanup function
     return () => {
       gameUnsubscribe();
       roundsUnsubscribe();
