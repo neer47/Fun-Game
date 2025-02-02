@@ -42,6 +42,7 @@ const GameBoard = ({
   const [currentRound, setCurrentRound] = useState(1);
   const [roundCompleted, setRoundCompleted] = useState(false);
   const [roundsHistory, setRoundsHistory] = useState([]);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [indexes, setIndexes] = useState({
     raja: null,
     mantri: null,
@@ -78,7 +79,7 @@ const GameBoard = ({
               setRoundsHistory(gameData.roundsHistory);
               updateRoundsHistory(gameData.roundsHistory);
             }
-            
+            setIsProcessing(false);
             setIndexes((prev) => gameData.indexes || prev);
             setFlippedIndexes((prev) => gameData.flippedIndexes || prev);
             setTimeLeft(gameData.timeLeft ?? 30);
@@ -353,41 +354,51 @@ const GameBoard = ({
 
   // Next round handler
   const handleNextRound = async () => {
-    if (gameMode === "multi" && !isHost) return;
-
+    if(gameMode === "multi" && !isHost) return;
+    if (isProcessing) return;
+    setIsProcessing(true);
+  
     try {
       isUpdatingRef.current = true;
-
-      // Preserve roundsHistory while updating other state
+      const newRound = currentRound + 1;
+  
+      // Check game over condition FIRST
+      if (newRound > rounds) {
+        alert("Game Over!");
+        return; // Exit early but finally block will still execute
+      }
+  
       const updates = {
-        currentRound: currentRound + 1,
+        currentRound: newRound,
         gameStarted: false,
         roundCompleted: false,
         mantriSelected: false,
         flippedIndexes: [],
         timeLeft: 30,
-        // Don't reset roundsHistory here
       };
-
+  
       if (gameMode === "multi") {
         const gameRef = ref(db, `games/${sessionId}`);
         await update(gameRef, {
           ...updates,
           lastUpdated: serverTimestamp(),
         });
+        // Force immediate local update for responsiveness
+        setCurrentRound(newRound);
+        setGameStarted(false);
+        setRoundCompleted(false);
+        setFlippedIndexes([]);
       } else {
-        setCurrentRound(prev => prev + 1);
+        setCurrentRound(newRound);
         setGameStarted(false);
         setRoundCompleted(false);
         setFlippedIndexes([]);
         setTimeLeft(30);
       }
-
-      if (currentRound >= rounds) {
-        alert("Game Over!");
-        return;
-      }
+    } catch (error) {
+      console.error("Next round error:", error);
     } finally {
+      setIsProcessing(false); // Critical reset
       isUpdatingRef.current = false;
     }
   };
@@ -445,11 +456,15 @@ const GameBoard = ({
 
         {roundCompleted && (isHost || gameMode === "single") && (
           <button
-            onClick={handleNextRound}
-            className="bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600"
-          >
-            {currentRound < rounds ? "Next Round" : "Finish Game"}
-          </button>
+          onClick={handleNextRound}
+          className={`bg-blue-500 text-white px-6 py-3 rounded-lg ${
+            isProcessing ? "opacity-50 cursor-not-allowed" : "hover:bg-blue-600"
+          }`}
+          disabled={isProcessing}
+        >
+          {currentRound < rounds ? "Next Round" : "Finish Game"}
+        </button>
+        
         )}
       </div>
     </div>
