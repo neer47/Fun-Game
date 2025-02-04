@@ -14,7 +14,9 @@ export function useGame() {
 export function GameProvider({ children }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [playerName, setPlayerName] = useState("");
+  const [playerName, setPlayerName] = useState(() => {
+    return localStorage.getItem('playerName') || '';
+  });
   const [roomLink, setRoomLink] = useState("");
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
   const [gameSessionId, setGameSessionId] = useState(null);
@@ -104,6 +106,11 @@ export function GameProvider({ children }) {
     }
   };
 
+  const updatePlayerName = (name) => {
+    localStorage.setItem('playerName', name);
+    setPlayerName(name);
+  };
+
   const value = {
     loading,
     error,
@@ -117,6 +124,7 @@ export function GameProvider({ children }) {
     setGameSessionId,
     players,
     setPlayers,
+    updatePlayerName,
   };
 
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>;

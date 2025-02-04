@@ -13,9 +13,7 @@ const GamePage = () => {
   const gameState = location.state;
   const { playerName, roomLink, gameSessionId } = useContext(GameContext);
   const [gameStatus, setGameStatus] = useState(gameState?.status || "playing");
-  const [players, setPlayers] = useState(
-    gameState?.players || [] // Use players from gameState directly
-  );
+  const [players, setPlayers] = useState(gameState?.players || []);
   const [roundsHistory, setRoundsHistory] = useState([]);
   const { saveGameData } = useGame();
   const [currentRound, setCurrentRound] = useState(1);
@@ -25,6 +23,7 @@ const GamePage = () => {
   const [flippedIndexes, setFlippedIndexes] = useState([]);
   const [mantriSelected, setMantriSelected] = useState(false);
   const [isSyncing, setIsSyncing] = useState(true);
+  const [showPointsTable, setShowPointsTable] = useState(false);
 
   // Store game data in a ref to prevent unnecessary re-renders
   const gameDataRef = useRef(null);
@@ -63,24 +62,15 @@ const GamePage = () => {
     }
   }, [gameState?.gameMode, gameState?.sessionId, navigate]);
 
-  // Add loading indicator in render
-  {
-    isSyncing && <div className="text-white">Syncing game state...</div>;
-  }
-
   useEffect(() => {
-    // Check if we're in single player or multiplayer mode based on the path
     const isSinglePlayer = location.pathname.includes("singleplayer");
 
     if (isSinglePlayer && !gameState?.playerNames) {
-      // If single player but no player names, redirect back to single player setup
       navigate("/singleplayer");
     } else if (!isSinglePlayer && !gameState?.sessionId) {
-      // If multiplayer but no game session, redirect back to multiplayer lobby
       navigate("/multiplayer");
     }
 
-    // If we have player names in single player mode, set up the players
     if (isSinglePlayer && gameState?.playerNames) {
       setPlayers(
         gameState.playerNames.map((name) => ({
@@ -91,7 +81,6 @@ const GamePage = () => {
     }
   }, [location, navigate, gameState]);
 
-  // Update Firebase when round completes
   const handleRoundComplete = async (roundData) => {
     if (gameState?.gameMode === "multi") {
       const gameRef = ref(db, `games/${gameState.sessionId}`);
@@ -122,11 +111,15 @@ const GamePage = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center bg-gray-800 py-8">
-      <h1 className="text-4xl font-bold text-yellow-500 mb-6">
+    <div className="min-h-screen flex flex-col items-center bg-gray-800 py-8 relative">
+      <h1 className="text-2xl md:text-4xl font-bold text-yellow-500 mb-4 md:mb-6 px-4 text-center">
         Welcome to the Game, {playerName}
       </h1>
-      <p className="text-base text-gray-300 mb-6">Room: {roomLink}</p>
+      {gameState?.gameMode === "multi" && (
+        <p className="text-sm md:text-base text-gray-300 mb-4 md:mb-6">
+          Room: {roomLink}
+        </p>
+      )}
 
       {gameStatus === "lobby" ? (
         <GameLobby
@@ -135,31 +128,61 @@ const GamePage = () => {
           onGameStart={() => setGameStatus("playing")}
         />
       ) : (
-        <div className="flex w-full max-w-7xl justify-between">
-          <GameBoard
-            players={players}
-            setPlayers={setPlayers}
-            rounds={
-              gameState?.rounds || gameState?.gameSettings?.totalRounds || 1
-            }
-            onRoundComplete={handleRoundComplete}
-            updateRoundsHistory={setRoundsHistory}
-            sessionId={gameState?.sessionId || gameSessionId}
-            currentRound={currentRound}
-            setCurrentRound={setCurrentRound}
-            gameStarted={gameStarted}
-            setGameStarted={setGameStarted}
-            roundCompleted={roundCompleted}
-            setRoundCompleted={setRoundCompleted}
-            timeLeft={timeLeft}
-            setTimeLeft={setTimeLeft}
-            flippedIndexes={flippedIndexes}
-            setFlippedIndexes={setFlippedIndexes}
-            mantriSelected={mantriSelected}
-            setMantriSelected={setMantriSelected}
-          />
-          <PointsTable players={players} roundsHistory={roundsHistory} />
-        </div>
+        <>
+          {/* Mobile Toggle Button */}
+          <button
+            className="md:hidden fixed bottom-4 right-4 bg-yellow-500 text-white p-3 rounded-full shadow-lg z-50 hover:bg-yellow-600 transition-all"
+            onClick={() => setShowPointsTable(!showPointsTable)}
+          >
+            {showPointsTable ? "📉 Hide Scores" : "📊 Show Scores"}
+          </button>
+
+          <div className="w-full max-w-7xl flex flex-col md:flex-row gap-4 md:gap-8 px-4">
+            <div className="w-full md:w-2/3">
+              <GameBoard
+                players={players}
+                setPlayers={setPlayers}
+                rounds={
+                  gameState?.rounds || gameState?.gameSettings?.totalRounds || 1
+                }
+                onRoundComplete={handleRoundComplete}
+                updateRoundsHistory={setRoundsHistory}
+                sessionId={gameState?.sessionId || gameSessionId}
+                currentRound={currentRound}
+                setCurrentRound={setCurrentRound}
+                gameStarted={gameStarted}
+                setGameStarted={setGameStarted}
+                roundCompleted={roundCompleted}
+                setRoundCompleted={setRoundCompleted}
+                timeLeft={timeLeft}
+                setTimeLeft={setTimeLeft}
+                flippedIndexes={flippedIndexes}
+                setFlippedIndexes={setFlippedIndexes}
+                mantriSelected={mantriSelected}
+                setMantriSelected={setMantriSelected}
+              />
+            </div>
+
+            {/* Points Table with responsive visibility */}
+            <div
+              className={`w-full md:w-1/3 transition-all duration-300 ${
+                showPointsTable
+                  ? "block fixed inset-0 bg-gray-800 p-4 z-40 overflow-y-auto"
+                  : "hidden md:block"
+              }`}
+            >
+              {showPointsTable && (
+                <button
+                  className="md:hidden absolute top-4 right-4 text-white text-2xl"
+                  onClick={() => setShowPointsTable(false)}
+                >
+                  &times;
+                </button>
+              )}
+              <PointsTable players={players} roundsHistory={roundsHistory} />
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

@@ -95,6 +95,21 @@ const GameLobby = () => {
     }
   };
 
+  const copyToClipboard = async (text) => {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        alert("Copied to clipboard!");
+      } catch (err) {
+        console.error("Clipboard API failed, using fallback...", err);
+        copyToClipboardFallback(text);
+      }
+    } else {
+      copyToClipboardFallback(text);
+    }
+  };
+  
+
   useEffect(() => {
     if (gameSessionId) {
       // Subscribe to players updates
