@@ -6,7 +6,7 @@ import { db } from "../config/firebase";
 
 
 const GameLobby = () => {
-  const {
+  const { 
     playerName,
     setPlayerName,
     roomLink,

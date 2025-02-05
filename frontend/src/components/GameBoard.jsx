@@ -246,7 +246,7 @@ const GameBoard = ({
   const updatePoints = async (selectedIndex) => {
     const isCorrect = selectedIndex === indexes.chor;
     const roundEntry = {};
-
+  
     const updatedPlayers = players.map((player) => {
       let points = player.points || 0;
       let roundPoints = 0;
@@ -270,20 +270,16 @@ const GameBoard = ({
       roundEntry[player.name] = roundPoints;
       return { ...player, points };
     });
-
+  
     try {
       isUpdatingRef.current = true;
-
-      // Get current state from Firebase
-      let updatedRoundsHistory = [];
+  
+      // Get current roundsHistory
+      const currentRoundsHistory = [...(roundsHistory || [])];
+      const updatedRoundsHistory = [...currentRoundsHistory, roundEntry];
+  
       if (gameMode === "multi") {
-        const gameRef = ref(db, `games/${sessionId}`);
-        const snapshot = await get(gameRef);
-        const currentData = snapshot.val() || {};
-        updatedRoundsHistory = [...(currentData.roundsHistory || []), roundEntry];
-
-        // Update Firebase atomically
-        await update(gameRef, {
+        await update(ref(db, `games/${sessionId}`), {
           players: updatedPlayers,
           roundsHistory: updatedRoundsHistory,
           roundCompleted: true,
@@ -291,10 +287,8 @@ const GameBoard = ({
           mantriSelected: true,
           lastUpdated: serverTimestamp(),
         });
-      } else {
-        updatedRoundsHistory = [...roundsHistory, roundEntry];
       }
-
+  
       // Update local state
       setRoundsHistory(updatedRoundsHistory);
       updateRoundsHistory(updatedRoundsHistory);
