@@ -98,55 +98,41 @@ const GameBoard = ({
     if (gameMode === "multi") {
       const gameRef = ref(db, `games/${sessionId}`);
       const snapshot = await get(gameRef);
-      const gameData = snapshot.val();
-
-      // Only proceed if we're the host
       if (!isHost) return null;
     }
-
-    let shuffledPlayers = [];
-    if (gameMode === "single") {
-      shuffledPlayers = playerNames.map((name) => ({
-        name,
-        points: 0,
-        isHost: false,
-      }));
-    } else {
-      // In multiplayer, preserve points and host status but reset roles
-      shuffledPlayers = players.map((player) => ({
+  
+    let basePlayers = gameMode === "single" 
+      ? playerNames.map(name => ({ name, points: 0, isHost: false }))
+      : players.map(player => ({ ...player, role: null, image: null }));
+  
+    const availableRoles = [...roles];
+    const assignedPlayers = basePlayers.map(player => {
+      const randomIndex = Math.floor(Math.random() * availableRoles.length);
+      const role = availableRoles.splice(randomIndex, 1)[0];
+      return {
         ...player,
-        role: null, // Clear existing role
-        image: null, // Clear existing image
-      }));
-    }
-
-    // Shuffle roles and assign to players
-    const shuffledRoles = [...roles].sort(() => Math.random() - 0.5);
-    shuffledPlayers = shuffledPlayers.sort(() => Math.random() - 0.5);
-
-    const assignedPlayers = shuffledPlayers.map((player, index) => ({
-      ...player,
-      role: shuffledRoles[index].name,
-      image: shuffledRoles[index].image,
-    }));
-
+        role: role.name,
+        image: role.image
+      };
+    });
+  
     const newIndexes = {
       raja: assignedPlayers.findIndex((p) => p.role === "Raja"),
       mantri: assignedPlayers.findIndex((p) => p.role === "Mantri"),
       chor: assignedPlayers.findIndex((p) => p.role === "Chor"),
       sipahi: assignedPlayers.findIndex((p) => p.role === "Sipahi"),
     };
-
+  
     setPlayers(assignedPlayers);
     setIndexes(newIndexes);
-
+  
     if (gameMode === "multi") {
       await updateGameInFirebase({
         players: assignedPlayers,
         indexes: newIndexes,
       });
     }
-
+  
     return { players: assignedPlayers, indexes: newIndexes };
   };
   // Start game flow
