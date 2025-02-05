@@ -179,7 +179,7 @@ const GameLobby = () => {
                   className="w-full p-3 bg-gray-700 text-white border border-gray-600 rounded-md"
                 />
                 <button
-                  onClick={() => navigator.clipboard.writeText(roomLink)}
+                  onClick={() => copyToClipboard(roomLink)}
                   className="px-4 py-3 bg-yellow-500 text-white rounded-md hover:bg-yellow-600 transition"
                 >
                   Copy
