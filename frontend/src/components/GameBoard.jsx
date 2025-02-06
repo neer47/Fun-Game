@@ -11,9 +11,11 @@ import {
   get,
 } from "firebase/database";
 import { db } from "../config/firebase";
+import { ToastContainer, toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 const roles = [
-  { name: "Raja", points: 1000, image: "/images/king.jpg" },
+  { name: "Raja", points: 1000, image: "/images/King.jpg" },
   { name: "Mantri", points: 500, image: "/images/minister.avif" },
   { name: "Sipahi", points: 300, image: "/images/soldier.avif" },
   { name: "Chor", points: 0, image: "/images/thief.jpg" },
@@ -216,16 +218,7 @@ const GameBoard = ({
 
   // Handle timer expiration
   const handleTimeOut = async () => {
-    await updatePoints(indexes.mantri);
-    if (gameMode === "multi") {
-      await updateGameInFirebase({
-        roundCompleted: true,
-        gameStarted: false,
-        flippedIndexes: [],
-      });
-    } else {
-      setFlippedIndexes([]);
-    }
+    await updatePoints(null);
   };
 
   // Points calculation with global roundsHistory update
@@ -233,58 +226,70 @@ const GameBoard = ({
     const isCorrect = selectedIndex === indexes.chor;
     const roundEntry = {};
   
-    const updatedPlayers = players.map((player) => {
-      let points = player.points || 0;
-      let roundPoints = 0;
-      
-      switch (player.role) {
-        case "Raja":
-          roundPoints = 1000;
-          break;
-        case "Sipahi":
-          roundPoints = 300;
-          break;
-        case "Mantri":
-          roundPoints = isCorrect ? 500 : 0;
-          break;
-        case "Chor":
-          roundPoints = isCorrect ? 0 : 500;
-          break;
-      }
-      
-      points += roundPoints;
+    // Get latest data first
+    let currentData;
+    if (gameMode === "multi") {
+      const snapshot = await get(ref(db, `games/${sessionId}`));
+      currentData = snapshot.val() || {};
+    }
+  
+    // Calculate points using latest data
+    const currentPlayers = gameMode === "multi" ? currentData.players || players : players;
+    const updatedPlayers = currentPlayers.map((player) => {
+      const roundPoints = calculateRoundPoints(player.role, isCorrect);
       roundEntry[player.name] = roundPoints;
-      return { ...player, points };
+      const currentPoints = player.points || 0;
+      return {
+        ...player,
+        points: currentPoints + roundPoints
+      };
     });
   
     try {
       isUpdatingRef.current = true;
-  
-      // Get current roundsHistory
-      const currentRoundsHistory = [...(roundsHistory || [])];
-      const updatedRoundsHistory = [...currentRoundsHistory, roundEntry];
+      const serverRoundsHistory = gameMode === "multi" 
+        ? (currentData.roundsHistory || [])
+        : (roundsHistory || []);
+      
+      const updatedRoundsHistory = [...serverRoundsHistory, roundEntry];
   
       if (gameMode === "multi") {
-        await update(ref(db, `games/${sessionId}`), {
+        // Atomic update
+        const updates = {
           players: updatedPlayers,
           roundsHistory: updatedRoundsHistory,
           roundCompleted: true,
           gameStarted: false,
           mantriSelected: true,
           lastUpdated: serverTimestamp(),
-        });
+        };
+        
+        await update(ref(db, `games/${sessionId}`), updates);
       }
   
       // Update local state
+      setPlayers(updatedPlayers);
       setRoundsHistory(updatedRoundsHistory);
       updateRoundsHistory(updatedRoundsHistory);
-      setPlayers(updatedPlayers);
       setRoundCompleted(true);
+  
+    } catch (error) {
+      console.error("Points update failed:", error);
+      // Retry logic could be added here
     } finally {
       isUpdatingRef.current = false;
     }
   };
-  // Player selection handler
+  
+  const calculateRoundPoints = (role, isCorrect) => {
+    switch (role) {
+      case "Raja": return 1000;
+      case "Sipahi": return 300;
+      case "Mantri": return isCorrect ? 500 : 0;
+      case "Chor": return isCorrect ? 0 : 500;
+      default: return 0;
+    }
+  };
   // Player selection handler with improved synchronization
   const handlePlayerSelection = async (index) => {
     if (
@@ -313,11 +318,7 @@ const GameBoard = ({
     // Show result and update points
     setTimeout(() => {
       const isCorrect = index === indexes.chor;
-      alert(
-        isCorrect
-          ? "Correct! The Chor has been identified."
-          : "Wrong choice! Mantri's points are swapped with Chor."
-      );
+      toast(isCorrect ? "✅ Correct! The Chor has been identified." : "❌ Wrong choice! Mantri's points are swapped with Chor.");
     }, 100);
 
     // Update points and complete round
@@ -344,7 +345,7 @@ const GameBoard = ({
   
       // Check game over condition FIRST
       if (newRound > rounds) {
-        alert("Game Over!");
+        toast("Game Over!");
         return; // Exit early but finally block will still execute
       }
   
@@ -376,7 +377,7 @@ const GameBoard = ({
         setTimeLeft(30);
       }
     } catch (error) {
-      console.error("Next round error:", error);
+      toast.error("Next round error: " + error.message);
     } finally {
       setIsProcessing(false); // Critical reset
       isUpdatingRef.current = false;
@@ -436,17 +437,18 @@ const GameBoard = ({
 
         {roundCompleted && (isHost || gameMode === "single") && (
           <button
-          onClick={handleNextRound}
-          className={`bg-blue-500 text-white px-6 py-3 rounded-lg ${
-            isProcessing ? "opacity-50 cursor-not-allowed" : "hover:bg-blue-600"
-          }`}
-          disabled={isProcessing}
-        >
-          {currentRound < rounds ? "Next Round" : "Finish Game"}
-        </button>
-        
+            onClick={handleNextRound}
+            className={`bg-blue-500 text-white px-6 py-3 rounded-lg ${
+              isProcessing ? "opacity-50 cursor-not-allowed" : "hover:bg-blue-600"
+            }`}
+            disabled={isProcessing}
+          >
+            {currentRound < rounds ? "Next Round" : "Finish Game"}
+          </button>
         )}
       </div>
+
+      <ToastContainer />
     </div>
   );
 };

@@ -9,6 +9,7 @@ const PointsTable = ({ players, roundsHistory }) => {
 
   // Compute total scores with null check
   const totalScores = useMemo(() => {
+    
     if (!roundsHistory || !Array.isArray(roundsHistory)) {
       console.log("Invalid roundsHistory:", roundsHistory);
       return {};

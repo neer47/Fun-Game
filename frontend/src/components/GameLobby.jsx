@@ -3,7 +3,8 @@ import { GameContext } from "../context/GameContext";
 import { useNavigate, useLocation } from "react-router-dom";
 import { ref, onValue, update } from 'firebase/database';
 import { db } from "../config/firebase";
-
+import { ToastContainer, toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 const GameLobby = () => {
   const { 
@@ -35,7 +36,7 @@ const GameLobby = () => {
 
   const handleCreateRoom = async () => {
     if (!playerName.trim()) {
-      alert("Please enter your name first!");
+      toast.error("Please enter your name first!");
       return;
     }
     const sessionId = await createRoom();
@@ -46,7 +47,7 @@ const GameLobby = () => {
 
   const handleJoinRoom = async () => {
     if (!playerName.trim()) {
-      alert("Please enter your name first!");
+      toast.error("Please enter your name first!");
       return;
     }
     const sessionId = await joinRoom(roomId);
@@ -88,10 +89,10 @@ const GameLobby = () => {
         });
       } catch (error) {
         console.error("Error starting game:", error);
-        alert("Failed to start game. Please try again.");
+        toast.error("Failed to start game. Please try again.");
       }
     } else {
-      alert("Need 4 players to start the game!");
+      toast.warn("Need 4 players to start the game!");
     }
   };
 
@@ -99,7 +100,7 @@ const GameLobby = () => {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       try {
         await navigator.clipboard.writeText(text);
-        alert("Copied to clipboard!");
+        toast.success("Copied to clipboard!");
       } catch (err) {
         console.error("Clipboard API failed, using fallback...", err);
         copyToClipboardFallback(text);
@@ -267,6 +268,7 @@ const GameLobby = () => {
           </div>
         )}
       </div>
+      <ToastContainer />
     </div>
   );
 };
