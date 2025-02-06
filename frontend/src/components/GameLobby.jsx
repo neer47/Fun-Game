@@ -150,6 +150,27 @@ const GameLobby = () => {
     console.log('Players updated:', players);
   }, [players]);
 
+  const capitalizeFirstLetter = (string) => {
+    return string.charAt(0).toUpperCase() + string.slice(1);
+  };
+
+  const handleNameChange = (e) => {
+    let name = e.target.value.trim(); // Trim white spaces
+    const validName = /^[a-zA-Z\s]*$/.test(name); // Only allow letters and spaces
+    const maxLength = 20; // Set character limit
+
+    if (name.length > maxLength) {
+      toast.error(`Name cannot exceed ${maxLength} characters.`);
+      return;
+    }
+
+    if (validName) {
+      setPlayerName(capitalizeFirstLetter(name));
+    } else {
+      toast.error("Name can only contain letters and spaces.");
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-900 p-4">
       <h1 className="text-4xl font-bold text-yellow-400 mb-8">
@@ -165,7 +186,7 @@ const GameLobby = () => {
             type="text"
             placeholder="Enter your name"
             value={playerName}
-            onChange={(e) => setPlayerName(e.target.value)}
+            onChange={handleNameChange}
             className="w-full p-3 bg-gray-700 text-white border border-gray-600 rounded-md focus:ring-2 focus:ring-yellow-400 mb-4"
           />
 

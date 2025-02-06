@@ -11,8 +11,8 @@ import {
   get,
 } from "firebase/database";
 import { db } from "../config/firebase";
-import { ToastContainer, toast } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 const roles = [
   { name: "Raja", points: 1000, image: "/images/King.jpg" },
@@ -27,6 +27,7 @@ const GameBoard = ({
   onRoundComplete,
   updateRoundsHistory,
   sessionId: propSessionId,
+  totalRounds
 }) => {
   const timerIdRef = useRef(null);
   const location = useLocation();
@@ -63,6 +64,7 @@ const GameBoard = ({
 
   // Firebase synchronization with improved roundsHistory handling
   const isUpdatingRef = useRef(false);
+  const roundsHistoryRef = useRef([]);
 
   // Modified Firebase synchronization
   useEffect(() => {
@@ -71,11 +73,11 @@ const GameBoard = ({
       const unsubscribe = onValue(gameRef, (snapshot) => {
         if (snapshot.exists()) {
           const gameData = snapshot.val();
-          
+
           // Only update if we're not currently updating Firebase
           if (!isUpdatingRef.current) {
             setPlayers([...(gameData.players || [])]);
-            
+
             // Only update roundsHistory if it exists and is non-empty
             if (gameData.roundsHistory && gameData.roundsHistory.length > 0) {
               setRoundsHistory(gameData.roundsHistory);
@@ -102,39 +104,40 @@ const GameBoard = ({
       const snapshot = await get(gameRef);
       if (!isHost) return null;
     }
-  
-    let basePlayers = gameMode === "single" 
-      ? playerNames.map(name => ({ name, points: 0, isHost: false }))
-      : players.map(player => ({ ...player, role: null, image: null }));
-  
+
+    let basePlayers =
+      gameMode === "single"
+        ? playerNames.map((name) => ({ name, points: 0, isHost: false }))
+        : players.map((player) => ({ ...player, role: null, image: null }));
+
     const availableRoles = [...roles];
-    const assignedPlayers = basePlayers.map(player => {
+    const assignedPlayers = basePlayers.map((player) => {
       const randomIndex = Math.floor(Math.random() * availableRoles.length);
       const role = availableRoles.splice(randomIndex, 1)[0];
       return {
         ...player,
         role: role.name,
-        image: role.image
+        image: role.image,
       };
     });
-  
+
     const newIndexes = {
       raja: assignedPlayers.findIndex((p) => p.role === "Raja"),
       mantri: assignedPlayers.findIndex((p) => p.role === "Mantri"),
       chor: assignedPlayers.findIndex((p) => p.role === "Chor"),
       sipahi: assignedPlayers.findIndex((p) => p.role === "Sipahi"),
     };
-  
+
     setPlayers(assignedPlayers);
     setIndexes(newIndexes);
-  
+
     if (gameMode === "multi") {
       await updateGameInFirebase({
         players: assignedPlayers,
         indexes: newIndexes,
       });
     }
-  
+
     return { players: assignedPlayers, indexes: newIndexes };
   };
   // Start game flow
@@ -225,34 +228,36 @@ const GameBoard = ({
   const updatePoints = async (selectedIndex) => {
     const isCorrect = selectedIndex === indexes.chor;
     const roundEntry = {};
-  
+
     // Get latest data first
     let currentData;
     if (gameMode === "multi") {
       const snapshot = await get(ref(db, `games/${sessionId}`));
       currentData = snapshot.val() || {};
     }
-  
+
     // Calculate points using latest data
-    const currentPlayers = gameMode === "multi" ? currentData.players || players : players;
+    const currentPlayers =
+      gameMode === "multi" ? currentData.players || players : players;
     const updatedPlayers = currentPlayers.map((player) => {
       const roundPoints = calculateRoundPoints(player.role, isCorrect);
       roundEntry[player.name] = roundPoints;
       const currentPoints = player.points || 0;
       return {
         ...player,
-        points: currentPoints + roundPoints
+        points: currentPoints + roundPoints,
       };
     });
-  
+
     try {
       isUpdatingRef.current = true;
-      const serverRoundsHistory = gameMode === "multi" 
-        ? (currentData.roundsHistory || [])
-        : (roundsHistory || []);
-      
+      const serverRoundsHistory =
+        gameMode === "multi"
+          ? currentData.roundsHistory || []
+          : roundsHistory || [];
+
       const updatedRoundsHistory = [...serverRoundsHistory, roundEntry];
-  
+
       if (gameMode === "multi") {
         // Atomic update
         const updates = {
@@ -263,16 +268,15 @@ const GameBoard = ({
           mantriSelected: true,
           lastUpdated: serverTimestamp(),
         };
-        
+
         await update(ref(db, `games/${sessionId}`), updates);
       }
-  
+
       // Update local state
       setPlayers(updatedPlayers);
       setRoundsHistory(updatedRoundsHistory);
       updateRoundsHistory(updatedRoundsHistory);
       setRoundCompleted(true);
-  
     } catch (error) {
       console.error("Points update failed:", error);
       // Retry logic could be added here
@@ -280,14 +284,19 @@ const GameBoard = ({
       isUpdatingRef.current = false;
     }
   };
-  
+
   const calculateRoundPoints = (role, isCorrect) => {
     switch (role) {
-      case "Raja": return 1000;
-      case "Sipahi": return 300;
-      case "Mantri": return isCorrect ? 500 : 0;
-      case "Chor": return isCorrect ? 0 : 500;
-      default: return 0;
+      case "Raja":
+        return 1000;
+      case "Sipahi":
+        return 300;
+      case "Mantri":
+        return isCorrect ? 500 : 0;
+      case "Chor":
+        return isCorrect ? 0 : 500;
+      default:
+        return 0;
     }
   };
   // Player selection handler with improved synchronization
@@ -318,7 +327,11 @@ const GameBoard = ({
     // Show result and update points
     setTimeout(() => {
       const isCorrect = index === indexes.chor;
-      toast(isCorrect ? "✅ Correct! The Chor has been identified." : "❌ Wrong choice! Mantri's points are swapped with Chor.");
+      toast(
+        isCorrect
+          ? "✅ Correct! The Chor has been identified."
+          : "❌ Wrong choice! Mantri's points are swapped with Chor."
+      );
     }, 100);
 
     // Update points and complete round
@@ -335,20 +348,38 @@ const GameBoard = ({
 
   // Next round handler
   const handleNextRound = async () => {
-    if(gameMode === "multi" && !isHost) return;
+    if (gameMode === "multi" && !isHost) return;
     if (isProcessing) return;
     setIsProcessing(true);
-  
+
     try {
       isUpdatingRef.current = true;
       const newRound = currentRound + 1;
-  
+
       // Check game over condition FIRST
-      if (newRound > rounds) {
-        toast("Game Over!");
-        return; // Exit early but finally block will still execute
+      if (newRound > totalRounds) {
+        // Prevent further updates after final round
+        
+        await updateGameInFirebase({
+          gameOver: true,
+          roundCompleted: true,
+          gameStarted: false,
+          currentRound: totalRounds // Lock to final round
+        });
+        
+        // Force final state sync
+        if (gameMode === "multi") {
+          const gameRef = ref(db, `games/${sessionId}`);
+          await update(gameRef, {
+            roundsHistory: roundsHistoryRef.current,
+            lastUpdated: serverTimestamp()
+          });
+        }
+        
+        onRoundComplete({ final: true, gameOver: true });
+        return;
       }
-  
+
       const updates = {
         currentRound: newRound,
         gameStarted: false,
@@ -357,7 +388,7 @@ const GameBoard = ({
         flippedIndexes: [],
         timeLeft: 30,
       };
-  
+
       if (gameMode === "multi") {
         const gameRef = ref(db, `games/${sessionId}`);
         await update(gameRef, {
@@ -394,7 +425,7 @@ const GameBoard = ({
   return (
     <div className="w-full max-w-lg mx-auto p-6 bg-gray-800 rounded-lg shadow-lg">
       <h2 className="text-center text-xl font-semibold text-yellow-400 mb-4">
-        Round {currentRound} / {rounds}
+        Round {Math.min(currentRound, rounds)} / {rounds}
       </h2>
 
       {gameStarted && (
@@ -439,15 +470,16 @@ const GameBoard = ({
           <button
             onClick={handleNextRound}
             className={`bg-blue-500 text-white px-6 py-3 rounded-lg ${
-              isProcessing ? "opacity-50 cursor-not-allowed" : "hover:bg-blue-600"
+              isProcessing
+                ? "opacity-50 cursor-not-allowed"
+                : "hover:bg-blue-600"
             }`}
             disabled={isProcessing}
           >
-            {currentRound < rounds ? "Next Round" : "Finish Game"}
+            {currentRound < rounds ? "Next Round" : "Show Result"}
           </button>
         )}
       </div>
-
       <ToastContainer />
     </div>
   );

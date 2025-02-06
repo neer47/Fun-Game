@@ -24,6 +24,11 @@ const GamePage = () => {
   const [mantriSelected, setMantriSelected] = useState(false);
   const [isSyncing, setIsSyncing] = useState(true);
   const [showPointsTable, setShowPointsTable] = useState(false);
+  const [gameOver, setGameOver] = useState(false);
+  const roundsHistoryRef = useRef([]); // Ref to track previous state
+
+  // Define totalRounds based on gameState
+  const totalRounds = gameState?.rounds || gameState?.gameSettings?.totalRounds || 1;
 
   // Store game data in a ref to prevent unnecessary re-renders
   const gameDataRef = useRef(null);
@@ -81,9 +86,34 @@ const GamePage = () => {
     }
   }, [location, navigate, gameState]);
 
+  
   const handleRoundComplete = async (roundData) => {
+    if (roundData.final && roundData.gameOver) {
+      setCurrentRound(totalRounds);
+      setGameOver(true);
+      return;
+    }
+    const newRoundData = {
+      roundNumber: roundsHistory.length + 1,
+      ...roundData
+    };
+  
+    if (
+      JSON.stringify(roundsHistoryRef.current) === JSON.stringify([...roundsHistory, newRoundData])
+    ) {
+      console.log("Skipping duplicate round update");
+      return;
+    }
+  
+    setRoundsHistory((prevHistory) => {
+      const updatedHistory = [...prevHistory, newRoundData];
+      roundsHistoryRef.current = updatedHistory; 
+      return updatedHistory;
+    });
+  
     if (gameState?.gameMode === "multi") {
       const gameRef = ref(db, `games/${gameState.sessionId}`);
+  
       try {
         await update(gameRef, {
           currentRound: roundData.currentRound,
@@ -91,24 +121,15 @@ const GamePage = () => {
             ...player,
             points: roundData.points[player.name] || 0,
           })),
-          roundsHistory: roundsHistory,
+          roundsHistory: roundsHistoryRef.current, 
         });
       } catch (error) {
         console.error("Error updating game state:", error);
       }
-    } else {
-      await saveGameData({
-        gameMode: gameState.gameMode,
-        roundNumber: roundsHistory.length + 1,
-        roundData,
-        players,
-        gameSettings: {
-          totalRounds: gameState.rounds,
-          playerNames: gameState.playerNames,
-        },
-      });
     }
   };
+  
+  
 
   return (
     <div className="min-h-screen flex flex-col items-center bg-gray-800 py-8 relative">
@@ -129,7 +150,6 @@ const GamePage = () => {
         />
       ) : (
         <>
-          {/* Mobile Toggle Button */}
           <button
             className="md:hidden fixed bottom-4 right-4 bg-yellow-500 text-white p-3 rounded-full shadow-lg z-50 hover:bg-yellow-600 transition-all"
             onClick={() => setShowPointsTable(!showPointsTable)}
@@ -142,9 +162,7 @@ const GamePage = () => {
               <GameBoard
                 players={players}
                 setPlayers={setPlayers}
-                rounds={
-                  gameState?.rounds || gameState?.gameSettings?.totalRounds || 1
-                }
+                totalRounds={totalRounds}
                 onRoundComplete={handleRoundComplete}
                 updateRoundsHistory={setRoundsHistory}
                 sessionId={gameState?.sessionId || gameSessionId}
@@ -163,7 +181,6 @@ const GamePage = () => {
               />
             </div>
 
-            {/* Points Table with responsive visibility */}
             <div
               className={`w-full md:w-1/3 transition-all duration-300 ${
                 showPointsTable
@@ -179,7 +196,13 @@ const GamePage = () => {
                   &times;
                 </button>
               )}
-              <PointsTable players={players} roundsHistory={roundsHistory} />
+              <PointsTable 
+                players={players} 
+                roundsHistory={roundsHistory}
+                totalRounds={totalRounds}
+                currentRound={currentRound}
+                gameOver={gameOver}
+              />
             </div>
           </div>
         </>
