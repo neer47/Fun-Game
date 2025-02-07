@@ -52,7 +52,7 @@ const HomePage = () => {
           onClick={handleSinglePlayer} 
           className="px-4 py-2 bg-blue-500 text-white rounded mr-4 hover:bg-blue-600 transition"
         >
-          Single Player
+          Single Screen
         </button>
         <button 
           onClick={handleMultiplayer} 

@@ -27,7 +27,7 @@ const GameBoard = ({
   onRoundComplete,
   updateRoundsHistory,
   sessionId: propSessionId,
-  totalRounds
+  totalRounds,
 }) => {
   const timerIdRef = useRef(null);
   const location = useLocation();
@@ -302,11 +302,12 @@ const GameBoard = ({
   // Player selection handler with improved synchronization
   const handlePlayerSelection = async (index) => {
     if (
-      !isCurrentMantri ||
-      mantriSelected ||
-      !gameStarted ||
-      timeLeft === 0 ||
-      index === indexes.mantri
+      (!isCurrentMantri ||
+        mantriSelected ||
+        !gameStarted ||
+        timeLeft === 0 ||
+        index === indexes.mantri) &&
+      gameMode === "multi"
     )
       return;
 
@@ -359,23 +360,23 @@ const GameBoard = ({
       // Check game over condition FIRST
       if (newRound > totalRounds) {
         // Prevent further updates after final round
-        
+
         await updateGameInFirebase({
           gameOver: true,
           roundCompleted: true,
           gameStarted: false,
-          currentRound: totalRounds // Lock to final round
+          currentRound: totalRounds, // Lock to final round
         });
-        
+
         // Force final state sync
         if (gameMode === "multi") {
           const gameRef = ref(db, `games/${sessionId}`);
           await update(gameRef, {
             roundsHistory: roundsHistoryRef.current,
-            lastUpdated: serverTimestamp()
+            lastUpdated: serverTimestamp(),
           });
         }
-        
+
         onRoundComplete({ final: true, gameOver: true });
         return;
       }
