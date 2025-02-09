@@ -13,6 +13,8 @@ import {
 import { db } from "../config/firebase";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import { logEvent } from "firebase/analytics";
+import { analytics } from "../config/firebase";
 
 const roles = [
   { name: "Raja", points: 1000, image: "/images/King.jpg" },
@@ -221,11 +223,16 @@ const GameBoard = ({
 
   // Handle timer expiration
   const handleTimeOut = async () => {
+    if(!mantriSelected)
     await updatePoints(null);
   };
 
   // Points calculation with global roundsHistory update
   const updatePoints = async (selectedIndex) => {
+    logEvent(analytics, 'points_update', {
+      round_number: currentRound,
+      players: players.map(p => p.name)
+    });
     const isCorrect = selectedIndex === indexes.chor;
     const roundEntry = {};
 
@@ -279,6 +286,10 @@ const GameBoard = ({
       setRoundCompleted(true);
     } catch (error) {
       console.error("Points update failed:", error);
+      logEvent(analytics, 'error', {
+        error_message: error.message,
+        component: 'GameBoard'
+      });
       // Retry logic could be added here
     } finally {
       isUpdatingRef.current = false;
@@ -301,6 +312,12 @@ const GameBoard = ({
   };
   // Player selection handler with improved synchronization
   const handlePlayerSelection = async (index) => {
+    const isCorrect = index === indexes.chor;
+    logEvent(analytics, 'role_selection', {
+      player_role: 'Mantri',
+      correct_choice: isCorrect,
+      time_remaining: timeLeft
+    });
     if (
       (!isCurrentMantri ||
         mantriSelected ||
@@ -349,6 +366,10 @@ const GameBoard = ({
 
   // Next round handler
   const handleNextRound = async () => {
+    logEvent(analytics, 'round_complete', {
+      round_number: currentRound,
+      total_points: players.reduce((sum, p) => sum + p.points, 0)
+    });
     if (gameMode === "multi" && !isHost) return;
     if (isProcessing) return;
     setIsProcessing(true);
@@ -410,6 +431,10 @@ const GameBoard = ({
       }
     } catch (error) {
       toast.error("Next round error: " + error.message);
+      logEvent(analytics, 'error', {
+        error_message: error.message,
+        component: 'GameBoard'
+      });
     } finally {
       setIsProcessing(false); // Critical reset
       isUpdatingRef.current = false;

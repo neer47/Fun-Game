@@ -2,8 +2,9 @@ import React, { useContext, useState, useEffect } from "react";
 import { GameContext } from "../context/GameContext";
 import { useNavigate, useLocation } from "react-router-dom";
 import { ref, onValue, update } from 'firebase/database';
-import { db } from "../config/firebase";
+import { db, analytics } from "../config/firebase";
 import { ToastContainer, toast } from 'react-toastify';
+import { setUserProperties, logEvent } from "firebase/analytics";
 import 'react-toastify/dist/ReactToastify.css';
 
 const GameLobby = () => {
@@ -35,6 +36,7 @@ const GameLobby = () => {
   };
 
   const handleCreateRoom = async () => {
+    logEvent(analytics, 'create_room', { player_name: playerName });
     if (!playerName.trim()) {
       toast.error("Please enter your name first!");
       return;
@@ -42,10 +44,16 @@ const GameLobby = () => {
     const sessionId = await createRoom();
     if (sessionId) {
       setGameSessionId(sessionId);
+      setUserProperties(analytics, {
+        player_name: playerName,
+        game_mode: 'multi', // Assuming creating a room is for multiplayer
+        rounds_played: rounds
+      });
     }
   };
 
   const handleJoinRoom = async () => {
+    logEvent(analytics, 'join_room', { player_name: playerName });
     if (!playerName.trim()) {
       toast.error("Please enter your name first!");
       return;
@@ -53,10 +61,20 @@ const GameLobby = () => {
     const sessionId = await joinRoom(roomId);
     if (sessionId) {
       setGameSessionId(sessionId);
+      setUserProperties(analytics, {
+        player_name: playerName,
+        game_mode: 'multi', // Assuming joining a room is always multiplayer
+        rounds_played: rounds
+      });
     }
   };
 
   const handleStartMultiplayerGame = async () => {
+    logEvent(analytics, 'game_start', {
+      game_type: 'multiplayer',
+      player_count: players.length,
+      rounds: rounds
+    });
     if (players.length === 4) {
       try {
         console.log('Starting game with players:', players);

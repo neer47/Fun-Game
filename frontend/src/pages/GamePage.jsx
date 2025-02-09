@@ -6,6 +6,8 @@ import GameLobby from "../components/GameLobby";
 import { GameContext, useGame } from "../context/GameContext";
 import { ref, onValue, update } from "firebase/database";
 import { db } from "../config/firebase";
+import { logEvent } from "firebase/analytics";
+import { analytics } from "../config/firebase";
 
 const GamePage = () => {
   const location = useLocation();
@@ -89,8 +91,21 @@ const GamePage = () => {
   
   const handleRoundComplete = async (roundData) => {
     if (roundData.final && roundData.gameOver) {
+      logEvent(analytics, 'game_over', {
+        total_rounds: totalRounds,
+        winner: players.reduce((prev, current) => 
+          (prev.points > current.points) ? prev : current
+        ).name
+      });
       setCurrentRound(totalRounds);
       setGameOver(true);
+      
+      // Log game completion event
+      logEvent(analytics, 'game_completion', { 
+        total_rounds: totalRounds,
+        players: players.length 
+      });
+
       return;
     }
     const newRoundData = {

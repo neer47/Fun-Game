@@ -1,4 +1,6 @@
 import React, { useMemo, useEffect } from "react";
+import { logEvent } from "firebase/analytics";
+import { analytics } from "../config/firebase";
 import {
   useReactTable,
   getCoreRowModel,
@@ -16,7 +18,14 @@ const PointsTable = ({
   // useEffect(() => {
   //   console.log("PointsTable received new roundsHistory:", roundsHistory);
   // }, [roundsHistory]);
-
+  // Add to useEffect in PointsTable:
+  useEffect(() => {
+    if (gameOver) {
+      logEvent(analytics, "view_results", {
+        final_scores: players.map((p) => `${p.name}: ${p.points}`),
+      });
+    }
+  }, [gameOver, players]);
   // Compute total scores with null check
   const totalScores = useMemo(() => {
     if (!roundsHistory || !Array.isArray(roundsHistory)) {
