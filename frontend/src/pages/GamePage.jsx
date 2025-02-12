@@ -30,10 +30,17 @@ const GamePage = () => {
   const roundsHistoryRef = useRef([]); // Ref to track previous state
 
   // Define totalRounds based on gameState
-  const totalRounds = gameState?.rounds || gameState?.gameSettings?.totalRounds || 1;
+  const totalRounds =
+    gameState?.rounds || gameState?.gameSettings?.totalRounds || 1;
 
   // Store game data in a ref to prevent unnecessary re-renders
   const gameDataRef = useRef(null);
+
+  useEffect(() => {
+    if (gameOver) {
+      setShowPointsTable(true);
+    }
+  }, [gameOver]);
 
   // Subscribe to game updates for multiplayer mode
   useEffect(() => {
@@ -60,7 +67,7 @@ const GamePage = () => {
             setTimeLeft(gameData.timeLeft || 30);
             setFlippedIndexes(gameData.flippedIndexes || []);
             setMantriSelected(gameData.mantriSelected || false);
-            setGameOver(gameData.gameOver || false)
+            setGameOver(gameData.gameOver || false);
           }
         }
         setIsSyncing(false);
@@ -89,47 +96,48 @@ const GamePage = () => {
     }
   }, [location, navigate, gameState]);
 
-  
   const handleRoundComplete = async (roundData) => {
     if (roundData.final && roundData.gameOver) {
-      logEvent(analytics, 'game_over', {
+      logEvent(analytics, "game_over", {
         total_rounds: totalRounds,
-        winner: players.reduce((prev, current) => 
-          (prev.points > current.points) ? prev : current
-        ).name
+        winner: players.reduce((prev, current) =>
+          prev.points > current.points ? prev : current
+        ).name,
       });
       setCurrentRound(totalRounds);
       setGameOver(true);
-      
+      setShowPointsTable(true);
+
       // Log game completion event
-      logEvent(analytics, 'game_completion', { 
+      logEvent(analytics, "game_completion", {
         total_rounds: totalRounds,
-        players: players.length 
+        players: players.length,
       });
 
       return;
     }
     const newRoundData = {
       roundNumber: roundsHistory.length + 1,
-      ...roundData
+      ...roundData,
     };
-  
+
     if (
-      JSON.stringify(roundsHistoryRef.current) === JSON.stringify([...roundsHistory, newRoundData])
+      JSON.stringify(roundsHistoryRef.current) ===
+      JSON.stringify([...roundsHistory, newRoundData])
     ) {
       console.log("Skipping duplicate round update");
       return;
     }
-  
+
     setRoundsHistory((prevHistory) => {
       const updatedHistory = [...prevHistory, newRoundData];
-      roundsHistoryRef.current = updatedHistory; 
+      roundsHistoryRef.current = updatedHistory;
       return updatedHistory;
     });
-  
+
     if (gameState?.gameMode === "multi") {
       const gameRef = ref(db, `games/${gameState.sessionId}`);
-  
+
       try {
         await update(gameRef, {
           currentRound: roundData.currentRound,
@@ -137,15 +145,17 @@ const GamePage = () => {
             ...player,
             points: roundData.points[player.name] || 0,
           })),
-          roundsHistory: roundsHistoryRef.current, 
+          roundsHistory: roundsHistoryRef.current,
         });
       } catch (error) {
         console.error("Error updating game state:", error);
       }
     }
   };
-  
-  
+
+  const handleClosePointsTable = () => {
+      setShowPointsTable(false);
+  };
 
   return (
     <div className="min-h-screen flex flex-col items-center bg-gray-800 py-8 relative">
@@ -166,15 +176,20 @@ const GamePage = () => {
         />
       ) : (
         <>
-          <button
-            className="md:hidden fixed bottom-4 right-4 bg-yellow-500 text-white p-3 rounded-full shadow-lg z-50 hover:bg-yellow-600 transition-all"
-            onClick={() => setShowPointsTable(!showPointsTable)}
-          >
-            {showPointsTable ? "📉 Hide Scores" : "📊 Show Scores"}
-          </button>
+          {!gameOver && (
+            <button
+              className="md:hidden fixed bottom-4 right-4 bg-yellow-500 text-white p-3 rounded-full shadow-lg z-50 hover:bg-yellow-600 transition-all"
+              onClick={() => setShowPointsTable(!showPointsTable)}
+            >
+              {showPointsTable ? "📉 Hide Scores" : "📊 Show Scores"}
+            </button>
+          )}
 
           <div className="w-full max-w-7xl flex flex-col md:flex-row gap-4 md:gap-8 px-4">
-            <div className="w-full md:w-2/3">
+            <div 
+              className={`w-full md:w-2/3 transition-opacity duration-300 
+                ${(showPointsTable || gameOver) ? 'md:opacity-100 opacity-100' : 'opacity-100'}`}
+            >
               <GameBoard
                 players={players}
                 setPlayers={setPlayers}
@@ -198,27 +213,32 @@ const GamePage = () => {
             </div>
 
             <div
-              className={`w-full md:w-1/3 transition-all duration-300 ${
-                showPointsTable
-                  ? "block fixed inset-0 bg-gray-800 p-4 z-40 overflow-y-auto"
-                  : "hidden md:block"
-              }`}
+              className={`
+                w-full md:w-1/3 transition-all duration-300
+                ${showPointsTable ? 'block md:relative fixed inset-0 md:inset-auto' : 'hidden md:block'}
+                ${showPointsTable ? 'md:bg-transparent bg-gray-800/80 md:p-0 p-4' : ''}
+                ${showPointsTable ? 'md:static z-40' : ''}
+                ${gameOver ? 'md:relative fixed inset-0 md:inset-auto z-40 bg-gray-800/80 md:bg-transparent p-4 md:p-0' : ''}
+              `}
             >
-              {showPointsTable && (
-                <button
-                  className="md:hidden absolute top-4 right-4 text-white text-2xl"
-                  onClick={() => setShowPointsTable(false)}
-                >
-                  &times;
-                </button>
-              )}
-              <PointsTable 
-                players={players} 
-                roundsHistory={roundsHistory}
-                totalRounds={totalRounds}
-                currentRound={currentRound}
-                gameOver={gameOver}
-              />
+              <div className="relative">
+                {/* Close button for both normal points table and game over state */}
+                {(showPointsTable || gameOver) && (
+                  <button
+                    className="md:hidden absolute -top-2 -right-2 w-8 h-8 flex items-center justify-center bg-yellow-500 text-gray-900 rounded-full shadow-lg z-50 hover:bg-yellow-600 transition-colors"
+                    onClick={handleClosePointsTable}
+                  >
+                    ✕
+                  </button>
+                )}
+                <PointsTable 
+                  players={players} 
+                  roundsHistory={roundsHistory}
+                  totalRounds={totalRounds}
+                  currentRound={currentRound}
+                  gameOver={gameOver}
+                />
+              </div>
             </div>
           </div>
         </>
