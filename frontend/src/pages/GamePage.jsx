@@ -60,6 +60,7 @@ const GamePage = () => {
             setTimeLeft(gameData.timeLeft || 30);
             setFlippedIndexes(gameData.flippedIndexes || []);
             setMantriSelected(gameData.mantriSelected || false);
+            setGameOver(gameData.gameOver || false)
           }
         }
         setIsSyncing(false);

@@ -244,14 +244,14 @@ const GameBoard = ({
     });
     const isCorrect = selectedIndex === indexes.chor;
     const roundEntry = {};
-
+  
     // Get latest data first
     let currentData;
     if (gameMode === "multi") {
       const snapshot = await get(ref(db, `games/${sessionId}`));
       currentData = snapshot.val() || {};
     }
-
+  
     // Calculate points using latest data
     const currentPlayers =
       gameMode === "multi" ? currentData.players || players : players;
@@ -264,47 +264,61 @@ const GameBoard = ({
         points: currentPoints + roundPoints,
       };
     });
-
+  
     try {
       isUpdatingRef.current = true;
       const serverRoundsHistory =
         gameMode === "multi"
           ? currentData.roundsHistory || []
           : roundsHistory || [];
-
+  
       const updatedRoundsHistory = [...serverRoundsHistory, roundEntry];
-
+  
+      // Check if this is the final round
+      const isGameOver = currentRound >= totalRounds;
+  
       if (gameMode === "multi") {
-        // Atomic update
+        // Atomic update with game over state
         const updates = {
           players: updatedPlayers,
           roundsHistory: updatedRoundsHistory,
           roundCompleted: true,
           gameStarted: false,
           mantriSelected: true,
+          gameOver: isGameOver, // Add this field
           lastUpdated: serverTimestamp(),
         };
-
+  
         await update(ref(db, `games/${sessionId}`), updates);
       }
-
+  
       // Update local state
       setPlayers(updatedPlayers);
       setRoundsHistory(updatedRoundsHistory);
       updateRoundsHistory(updatedRoundsHistory);
       setRoundCompleted(true);
+      
+      // Call onRoundComplete with final flag if game is over
+      if (isGameOver) {
+        onRoundComplete({ 
+          final: true, 
+          gameOver: true,
+          points: updatedPlayers.reduce((acc, player) => {
+            acc[player.name] = player.points;
+            return acc;
+          }, {})
+        });
+      }
     } catch (error) {
       console.error("Points update failed:", error);
       logEvent(analytics, 'error', {
         error_message: error.message,
         component: 'GameBoard'
       });
-      // Retry logic could be added here
     } finally {
       isUpdatingRef.current = false;
     }
   };
-
   const calculateRoundPoints = (role, isCorrect) => {
     switch (role) {
       case "Raja":
@@ -373,82 +387,63 @@ const GameBoard = ({
     }, 1500);
   };
 
-  // Next round handler
-  const handleNextRound = async () => {
-    logEvent(analytics, 'round_complete', {
-      round_number: currentRound,
-      total_points: players.reduce((sum, p) => sum + p.points, 0)
-    });
-    if (gameMode === "multi" && !isHost) return;
-    if (isProcessing) return;
-    setIsProcessing(true);
+// Also modify the handleNextRound function:
+const handleNextRound = async () => {
+  logEvent(analytics, 'round_complete', {
+    round_number: currentRound,
+    total_points: players.reduce((sum, p) => sum + p.points, 0)
+  });
+  if (gameMode === "multi" && !isHost) return;
+  if (isProcessing) return;
+  setIsProcessing(true);
 
-    try {
-      isUpdatingRef.current = true;
-      const newRound = currentRound + 1;
+  try {
+    isUpdatingRef.current = true;
+    const newRound = currentRound + 1;
 
-      // Check game over condition FIRST
-      if (newRound > totalRounds) {
-        // Prevent further updates after final round
-
-        await updateGameInFirebase({
-          gameOver: true,
-          roundCompleted: true,
-          gameStarted: false,
-          currentRound: totalRounds, // Lock to final round
-        });
-
-        // Force final state sync
-        if (gameMode === "multi") {
-          const gameRef = ref(db, `games/${sessionId}`);
-          await update(gameRef, {
-            roundsHistory: roundsHistoryRef.current,
-            lastUpdated: serverTimestamp(),
-          });
-        }
-
-        onRoundComplete({ final: true, gameOver: true });
-        return;
-      }
-
-      const updates = {
-        currentRound: newRound,
-        gameStarted: false,
-        roundCompleted: false,
-        mantriSelected: false,
-        flippedIndexes: [],
-        timeLeft: 30,
-      };
-
-      if (gameMode === "multi") {
-        const gameRef = ref(db, `games/${sessionId}`);
-        await update(gameRef, {
-          ...updates,
-          lastUpdated: serverTimestamp(),
-        });
-        // Force immediate local update for responsiveness
-        setCurrentRound(newRound);
-        setGameStarted(false);
-        setRoundCompleted(false);
-        setFlippedIndexes([]);
-      } else {
-        setCurrentRound(newRound);
-        setGameStarted(false);
-        setRoundCompleted(false);
-        setFlippedIndexes([]);
-        setTimeLeft(30);
-      }
-    } catch (error) {
-      toast.error("Next round error: " + error.message);
-      logEvent(analytics, 'error', {
-        error_message: error.message,
-        component: 'GameBoard'
-      });
-    } finally {
-      setIsProcessing(false); // Critical reset
-      isUpdatingRef.current = false;
+    // Game is already over, no need to proceed
+    if (currentRound >= totalRounds) {
+      return;
     }
-  };
+
+    const updates = {
+      currentRound: newRound,
+      gameStarted: false,
+      roundCompleted: false,
+      mantriSelected: false,
+      flippedIndexes: [],
+      timeLeft: 30,
+    };
+
+    if (gameMode === "multi") {
+      const gameRef = ref(db, `games/${sessionId}`);
+      await update(gameRef, {
+        ...updates,
+        lastUpdated: serverTimestamp(),
+      });
+      // Force immediate local update for responsiveness
+      setCurrentRound(newRound);
+      setGameStarted(false);
+      setRoundCompleted(false);
+      setFlippedIndexes([]);
+    } else {
+      setCurrentRound(newRound);
+      setGameStarted(false);
+      setRoundCompleted(false);
+      setFlippedIndexes([]);
+      setTimeLeft(30);
+    }
+  } catch (error) {
+    toast.error("Next round error: " + error.message);
+    logEvent(analytics, 'error', {
+      error_message: error.message,
+      component: 'GameBoard'
+    });
+  } finally {
+    setIsProcessing(false);
+    isUpdatingRef.current = false;
+  }
+};
 
   const updateGameInFirebase = async (updates) => {
     if (gameMode === "multi" && sessionId) {
@@ -511,7 +506,7 @@ const GameBoard = ({
             }`}
             disabled={isProcessing}
           >
-            {currentRound < rounds ? "Next Round" : "Show Result"}
+            {currentRound < rounds ? "Next Round" : "Game Over"}
           </button>
         )}
       </div>
