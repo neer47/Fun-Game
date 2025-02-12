@@ -229,6 +229,15 @@ const GameBoard = ({
 
   // Points calculation with global roundsHistory update
   const updatePoints = async (selectedIndex) => {
+    if (gameMode === "multi") {
+      const snapshot = await get(ref(db, `games/${sessionId}`));
+      const currentData = snapshot.val();
+      
+      // If already processing or round completed, return
+      if (currentData?.processing || currentData?.roundCompleted) {
+        return;
+      }
+    }
     logEvent(analytics, 'points_update', {
       round_number: currentRound,
       players: players.map(p => p.name)
