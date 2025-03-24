@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import GameBoard from "../components/GameBoard";
 import PointsTable from "../components/PointsTable";
 import GameLobby from "../components/GameLobby";
-import { GameContext, useGame } from "../context/GameContext";
+import { GameContext } from "../context/GameContext";
 import { ref, onValue, update } from "firebase/database";
 import { db } from "../config/firebase";
 import { logEvent } from "firebase/analytics";
@@ -17,14 +17,7 @@ const GamePage = () => {
   const [gameStatus, setGameStatus] = useState(gameState?.status || "playing");
   const [players, setPlayers] = useState(gameState?.players || []);
   const [roundsHistory, setRoundsHistory] = useState([]);
-  const { saveGameData } = useGame();
   const [currentRound, setCurrentRound] = useState(1);
-  const [gameStarted, setGameStarted] = useState(false);
-  const [roundCompleted, setRoundCompleted] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(30);
-  const [flippedIndexes, setFlippedIndexes] = useState([]);
-  const [mantriSelected, setMantriSelected] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(true);
   const [showPointsTable, setShowPointsTable] = useState(false);
   const [gameOver, setGameOver] = useState(false);
   const roundsHistoryRef = useRef([]); // Ref to track previous state
@@ -45,7 +38,6 @@ const GamePage = () => {
   // Subscribe to game updates for multiplayer mode
   useEffect(() => {
     if (gameState?.gameMode === "multi" && gameState?.sessionId) {
-      setIsSyncing(true);
       const gameRef = ref(db, `games/${gameState.sessionId}`);
       const unsubscribe = onValue(gameRef, (snapshot) => {
         if (snapshot.exists()) {
@@ -62,15 +54,9 @@ const GamePage = () => {
             if (gameData.currentRound) {
               setCurrentRound(gameData.currentRound);
             }
-            setGameStarted(gameData.gameStarted || false);
-            setRoundCompleted(gameData.roundCompleted || false);
-            setTimeLeft(gameData.timeLeft || 30);
-            setFlippedIndexes(gameData.flippedIndexes || []);
-            setMantriSelected(gameData.mantriSelected || false);
             setGameOver(gameData.gameOver || false);
           }
         }
-        setIsSyncing(false);
       });
 
       return () => unsubscribe();
@@ -154,7 +140,7 @@ const GamePage = () => {
   };
 
   const handleClosePointsTable = () => {
-      setShowPointsTable(false);
+    setShowPointsTable(false);
   };
 
   return (
@@ -186,9 +172,13 @@ const GamePage = () => {
           )}
 
           <div className="w-full max-w-7xl flex flex-col md:flex-row gap-4 md:gap-8 px-4">
-            <div 
+            <div
               className={`w-full md:w-2/3 transition-opacity duration-300 
-                ${(showPointsTable || gameOver) ? 'md:opacity-100 opacity-100' : 'opacity-100'}`}
+                ${
+                  showPointsTable || gameOver
+                    ? "md:opacity-100 opacity-100"
+                    : "opacity-100"
+                }`}
             >
               <GameBoard
                 players={players}
@@ -197,28 +187,28 @@ const GamePage = () => {
                 onRoundComplete={handleRoundComplete}
                 updateRoundsHistory={setRoundsHistory}
                 sessionId={gameState?.sessionId || gameSessionId}
-                currentRound={currentRound}
-                setCurrentRound={setCurrentRound}
-                gameStarted={gameStarted}
-                setGameStarted={setGameStarted}
-                roundCompleted={roundCompleted}
-                setRoundCompleted={setRoundCompleted}
-                timeLeft={timeLeft}
-                setTimeLeft={setTimeLeft}
-                flippedIndexes={flippedIndexes}
-                setFlippedIndexes={setFlippedIndexes}
-                mantriSelected={mantriSelected}
-                setMantriSelected={setMantriSelected}
               />
             </div>
 
             <div
               className={`
                 w-full md:w-1/3 transition-all duration-300
-                ${showPointsTable ? 'block md:relative fixed inset-0 md:inset-auto' : 'hidden md:block'}
-                ${showPointsTable ? 'md:bg-transparent bg-gray-800/80 md:p-0 p-4' : ''}
-                ${showPointsTable ? 'md:static z-40' : ''}
-                ${gameOver ? 'md:relative fixed inset-0 md:inset-auto z-40 bg-gray-800/80 md:bg-transparent p-4 md:p-0' : ''}
+                ${
+                  showPointsTable
+                    ? "block md:relative fixed inset-0 md:inset-auto"
+                    : "hidden md:block"
+                }
+                ${
+                  showPointsTable
+                    ? "md:bg-transparent bg-gray-800/80 md:p-0 p-4"
+                    : ""
+                }
+                ${showPointsTable ? "md:static z-40" : ""}
+                ${
+                  gameOver
+                    ? "md:relative fixed inset-0 md:inset-auto z-40 bg-gray-800/80 md:bg-transparent p-4 md:p-0"
+                    : ""
+                }
               `}
             >
               <div className="relative">
@@ -231,8 +221,8 @@ const GamePage = () => {
                     ✕
                   </button>
                 )}
-                <PointsTable 
-                  players={players} 
+                <PointsTable
+                  players={players}
                   roundsHistory={roundsHistory}
                   totalRounds={totalRounds}
                   currentRound={currentRound}
