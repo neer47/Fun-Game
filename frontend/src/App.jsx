@@ -10,16 +10,20 @@ import { analytics } from "./config/firebase";
 
 const App = () => {
   useEffect(() => {
+    // Log user engagement event when the app starts
     logEvent(analytics, 'user_engagement', {
       session_start: new Date().toISOString()
     });
   }, []);
 
   return (
+    // Wrap the app inside Router for navigation
     <Router>
+      {/* Provide game state and logic to all components */}
       <GameProvider>
         <div className="min-h-screen bg-gray-100">
           <Routes>
+            {/* Define routes for different pages in the application */}
             <Route path="/" element={<HomePage />} />
             <Route path="/singleplayer" element={<SinglePlayerInterface />} />
             <Route path="/singleplayer/game" element={<GamePage />} />

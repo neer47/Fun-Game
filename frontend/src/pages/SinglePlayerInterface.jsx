@@ -5,11 +5,13 @@ const SinglePlayerInterface = () => {
   const [playerNames, setPlayerNames] = useState(["", "", "", ""]);
   const [rounds, setRounds] = useState(1);
   const navigate = useNavigate();
-
+  
+  // Log player name updates in the console
   useEffect(() => {
     console.log("Updated Player Names:", playerNames);
   }, [playerNames]);
 
+  // Start the game after validating player names
   const handleStartGame = () => {
     if (playerNames.some(name => name.trim() === "")) {
       alert("All player names must be filled!");
@@ -30,20 +32,25 @@ const SinglePlayerInterface = () => {
     });
   };
 
+  // Increase the number of rounds (max: 10)
   const incrementRounds = () => {
     if (rounds < 10) setRounds(rounds + 1);
   };
 
+  // Decrease the number of rounds (min: 1)
   const decrementRounds = () => {
     if (rounds > 1) setRounds(rounds - 1);
   };
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-900 p-4">
+      {/* Game title */}
       <h1 className="text-4xl font-bold text-yellow-400 mb-8">
         Raja Mantri Chor Sipahi
       </h1>
+      
       <div className="bg-gray-800 shadow-lg rounded-lg p-6 w-full max-w-lg">
+        {/* Player name input section */}
         <h2 className="text-2xl font-semibold text-gray-100 mb-6">
           Enter Player Names
         </h2>
@@ -64,6 +71,7 @@ const SinglePlayerInterface = () => {
           </div>
         ))}
 
+        {/* Round selection section */}
         <div className="mb-6">
           <label className="block text-gray-200 font-medium mb-2">
             Select Number of Rounds
@@ -89,6 +97,7 @@ const SinglePlayerInterface = () => {
           </div>
         </div>
 
+        {/* Start game button */}
         <button
           onClick={handleStartGame}
           aria-label="Start Game"
@@ -101,4 +110,4 @@ const SinglePlayerInterface = () => {
   );
 };
 
-export default SinglePlayerInterface; 
+export default SinglePlayerInterface;

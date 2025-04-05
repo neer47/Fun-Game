@@ -8,33 +8,39 @@ import { setUserProperties, logEvent } from "firebase/analytics";
 import 'react-toastify/dist/ReactToastify.css';
 
 const GameLobby = () => {
+  // Access game context for state management
   const { 
     playerName,
     setPlayerName,
     roomLink,
     createRoom,
     joinRoom,
-    isCreatingRoom,
     setGameSessionId,
     gameSessionId,
     setPlayers,
     players,
   } = useContext(GameContext);
-  const [inviteLink, setInviteLink] = useState("");
+
+  // Local state for number of rounds
   const [rounds, setRounds] = useState(1);
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Check if joining via link and extract room ID
   const isJoiningViaLink = location.search.includes('join=');
   const roomId = new URLSearchParams(location.search).get('join');
 
+  // Increment rounds (max 10)
   const incrementRounds = () => {
     if (rounds < 10) setRounds(rounds + 1);
   };
 
+  // Decrement rounds (min 1)
   const decrementRounds = () => {
     if (rounds > 1) setRounds(rounds - 1);
   };
 
+  // Handle room creation
   const handleCreateRoom = async () => {
     logEvent(analytics, 'create_room', { player_name: playerName });
     if (!playerName.trim()) {
@@ -44,14 +50,16 @@ const GameLobby = () => {
     const sessionId = await createRoom();
     if (sessionId) {
       setGameSessionId(sessionId);
+      // Set analytics user properties
       setUserProperties(analytics, {
         player_name: playerName,
-        game_mode: 'multi', // Assuming creating a room is for multiplayer
+        game_mode: 'multi',
         rounds_played: rounds
       });
     }
   };
 
+  // Handle joining an existing room
   const handleJoinRoom = async () => {
     logEvent(analytics, 'join_room', { player_name: playerName });
     if (!playerName.trim()) {
@@ -61,14 +69,16 @@ const GameLobby = () => {
     const sessionId = await joinRoom(roomId);
     if (sessionId) {
       setGameSessionId(sessionId);
+      // Set analytics user properties
       setUserProperties(analytics, {
         player_name: playerName,
-        game_mode: 'multi', // Assuming joining a room is always multiplayer
+        game_mode: 'multi',
         rounds_played: rounds
       });
     }
   };
 
+  // Start multiplayer game when conditions are met
   const handleStartMultiplayerGame = async () => {
     logEvent(analytics, 'game_start', {
       game_type: 'multiplayer',
@@ -78,9 +88,9 @@ const GameLobby = () => {
     if (players.length === 4) {
       try {
         console.log('Starting game with players:', players);
-        // Update game status in Firebase before navigating
         const gameRef = ref(db, `games/${gameSessionId}`);
 
+        // Update game state in Firebase
         await update(gameRef, {
           status: 'playing',
           startedAt: new Date().toISOString(),
@@ -93,6 +103,7 @@ const GameLobby = () => {
           flippedIndexes: []
         });
 
+        // Navigate to game page with state
         navigate("/multiplayer/game", {
           state: {
             sessionId: gameSessionId,
@@ -114,6 +125,7 @@ const GameLobby = () => {
     }
   };
 
+  // Copy room link to clipboard with fallback
   const copyToClipboard = async (text) => {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       try {
@@ -127,11 +139,10 @@ const GameLobby = () => {
       copyToClipboardFallback(text);
     }
   };
-  
 
+  // Subscribe to game updates when session exists
   useEffect(() => {
     if (gameSessionId) {
-      // Subscribe to players updates
       const gameRef = ref(db, `games/${gameSessionId}`);
       const unsubscribe = onValue(gameRef, (snapshot) => {
         if (snapshot.exists()) {
@@ -139,7 +150,7 @@ const GameLobby = () => {
           console.log('Lobby received game data:', gameData);
           setPlayers(gameData.players || []);
           
-          // If game has started, navigate non-host players to game
+          // Auto-navigate non-host players when game starts
           const isHost = gameData.players?.some(p => p.isHost && p.name === playerName);
           if (gameData.status === 'playing' && !isHost) {
             console.log('Non-host navigating with players:', gameData.players);
@@ -159,6 +170,7 @@ const GameLobby = () => {
         }
       });
 
+      // Cleanup subscription
       return () => unsubscribe();
     }
   }, [gameSessionId, playerName, navigate]);
@@ -168,14 +180,16 @@ const GameLobby = () => {
     console.log('Players updated:', players);
   }, [players]);
 
+  // Capitalize first letter of string
   const capitalizeFirstLetter = (string) => {
     return string.charAt(0).toUpperCase() + string.slice(1);
   };
 
+  // Handle name input with validation
   const handleNameChange = (e) => {
-    let name = e.target.value.trim(); // Trim white spaces
-    const validName = /^[a-zA-Z\s]*$/.test(name); // Only allow letters and spaces
-    const maxLength = 20; // Set character limit
+    let name = e.target.value.trim();
+    const validName = /^[a-zA-Z\s]*$/.test(name);
+    const maxLength = 20;
 
     if (name.length > maxLength) {
       toast.error(`Name cannot exceed ${maxLength} characters.`);
@@ -189,6 +203,7 @@ const GameLobby = () => {
     }
   };
 
+  // Render lobby UI
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-900 p-4">
       <h1 className="text-4xl font-bold text-yellow-400 mb-8">
@@ -200,6 +215,7 @@ const GameLobby = () => {
         </h2>
 
         <div className="mb-6">
+          {/* Player name input */}
           <input
             type="text"
             placeholder="Enter your name"
@@ -208,6 +224,7 @@ const GameLobby = () => {
             className="w-full p-3 bg-gray-700 text-white border border-gray-600 rounded-md focus:ring-2 focus:ring-yellow-400 mb-4"
           />
 
+          {/* Room link display or join/create buttons */}
           {roomLink ? (
             <div className="space-y-4">
               <p className="text-gray-300">Share this link with other players:</p>
@@ -250,6 +267,7 @@ const GameLobby = () => {
           )}
         </div>
 
+        {/* Players list and host controls */}
         {players.length > 0 && (
           <div className="mt-4">
             <h3 className="text-lg text-gray-300 mb-2">Players in Room:</h3>
@@ -265,6 +283,7 @@ const GameLobby = () => {
                 </div>
               ))}
             </div>
+            {/* Host-only round selection and start button */}
             {players.some(p => p.isHost && p.name === playerName) && (
               <>
                 <div className="mt-6 mb-4">
@@ -307,9 +326,10 @@ const GameLobby = () => {
           </div>
         )}
       </div>
+      {/* Toast notifications container */}
       <ToastContainer />
     </div>
   );
 };
 
-export default GameLobby; 
+export default GameLobby;
